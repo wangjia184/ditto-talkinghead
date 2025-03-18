@@ -6,7 +6,7 @@ import random
 import torch
 import pickle
 
-from stream_pipeline_offline import StreamSDK
+from stream_pipeline_online import StreamSDK
 
 
 def seed_everything(seed):
@@ -34,7 +34,9 @@ def run(SDK: StreamSDK, audio_path: str, source_path: str, output_path: str, mor
     SDK.setup(source_path, output_path, **setup_kwargs)
 
     audio, sr = librosa.core.load(audio_path, sr=16000)
-    num_f = math.ceil(len(audio) / 16000 * 25)
+    
+    # number of frames
+    num_f = math.ceil(len(audio) / 16000 * 25) # 25 fps
 
     fade_in = run_kwargs.get("fade_in", -1)
     fade_out = run_kwargs.get("fade_out", -1)
@@ -43,10 +45,14 @@ def run(SDK: StreamSDK, audio_path: str, source_path: str, output_path: str, mor
 
     online_mode = SDK.online_mode
     if online_mode:
+        # 25 fps, duration of each frame = 40ms; 16kHz x 0.04 = 640 samples per each frame
+        # 3 frames for previous chunk
+        # 5 frames of current chunk
+        # 2 frames for next chunk
         chunksize = run_kwargs.get("chunksize", (3, 5, 2))
-        audio = np.concatenate([np.zeros((chunksize[0] * 640,), dtype=np.float32), audio], 0)
+        audio = np.concatenate([np.zeros((chunksize[0] * 640,), dtype=np.float32), audio], 0) # prepend silent frames for previous chunk
         split_len = int(sum(chunksize) * 0.04 * 16000) + 80  # 6480
-        for i in range(0, len(audio), chunksize[1] * 640):
+        for i in range(0, len(audio), chunksize[1] * 640): # move forward 200ms, 5 frames = 5 x 640
             audio_chunk = audio[i:i + split_len]
             if len(audio_chunk) < split_len:
                 audio_chunk = np.pad(audio_chunk, (0, split_len - len(audio_chunk)), mode="constant")

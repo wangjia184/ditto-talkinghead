@@ -451,6 +451,7 @@ class StreamSDK:
                                 self.motion_stitch_queue.put([frame_idx, x_d_info, ctrl_kwargs], timeout=1)
                                 break
                             except queue.Full:
+                                print("motion_stitch_queue is full")
                                 continue
 
                         gen_frame_idx += 1
@@ -505,6 +506,7 @@ class StreamSDK:
                 self.audio2motion_queue.put(aud_feat, timeout=1)
                 break
             except queue.Full:
+                motion_stitch_queue
                 continue
 
 
