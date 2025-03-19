@@ -1,5 +1,7 @@
 from ..utils.load_model import load_model
 
+import a2h
+
 
 class HubertStreaming:
     def __init__(self, model_path, device="cuda", **kwargs):
@@ -14,9 +16,11 @@ class HubertStreaming:
         if self.model_type == "onnx":
             output = self.model.run(None, {"input_values": audio_chunk.reshape(1, -1)})[0]
         elif self.model_type == "tensorrt":
-            self.model.setup({"input_values": audio_chunk.reshape(1, -1)})
-            self.model.infer()
-            output = self.model.buffer["encoding_out"][0]
+            
+            #self.model.setup({"input_values": audio_chunk.reshape(1, -1)})
+            #self.model.infer()
+            #output = self.model.buffer["encoding_out"][0]
+            output = a2h.hubert_encode_audio(audio_chunk.reshape(1, -1))
         else:
             raise ValueError(f"Unsupported model type: {self.model_type}")
         return output

@@ -3,7 +3,7 @@ import numpy as np
 import cv2
 
 from ..utils.load_model import load_model
-
+import a2h
 
 def distance2bbox(points, distance, max_shape=None):
     """Decode distance prediction to bounding box.
@@ -81,24 +81,25 @@ class InsightFaceDet:
         self.use_kps = True
 
         self.output_names = [
-            "scores1",
-            "scores2",
-            "scores3",
-            "boxes1",
-            "boxes2",
-            "boxes3",
-            "kps1",
-            "kps2",
-            "kps3",
+            "scores1", # (8192, 1)
+            "scores2", # (2048, 1)
+            "scores3", # (512, 1)
+            "boxes1",  # (8192, 4)
+            "boxes2",  # (2048, 4)
+            "boxes3",  # (512, 4)
+            "kps1",    # (8192, 10)
+            "kps2",    # (2048, 10)
+            "kps3",    # (512, 10)
         ]
 
     def _run_model(self, blob):
         if self.model_type == "onnx":
             net_outs = self.model.run(None, {"image": blob})
         elif self.model_type == "tensorrt":
-            self.model.setup({"image": blob})
-            self.model.infer()
-            net_outs = [self.model.buffer[name][0] for name in self.output_names]
+            #self.model.setup({"image": blob})
+            #self.model.infer()
+            #net_outs = [self.model.buffer[name][0] for name in self.output_names]
+            net_outs = a2h.insightface_detect(blob)
         else:
             raise ValueError(f"Unsupported model type: {self.model_type}")
         return net_outs
