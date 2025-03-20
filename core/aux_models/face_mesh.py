@@ -3,6 +3,7 @@ import numpy as np
 
 from ..utils.load_model import load_model
 
+import a2h
 
 class FaceMesh:
     def __init__(self, model_path, device="cuda"):
@@ -70,10 +71,16 @@ class FaceMesh:
             for i, name in enumerate(self.output_names):
                 outputs[name] = out_list[i]
         elif self.model_type == "tensorrt":
-            self.model.setup({"input": roi_image})
-            self.model.infer()
-            for name in self.output_names:
-                outputs[name] = self.model.buffer[name][0]
+            #print(roi_image.shape, roi_image.dtype)
+            #self.model.setup({"input": roi_image})
+            #self.model.infer()
+            #for name in self.output_names:
+            #    outputs[name] = self.model.buffer[name][0]
+            #    print(name, outputs[name].shape, outputs[name].dtype)
+            (identity, identity1, identity2) = a2h.facemesh_detect( np.ascontiguousarray(roi_image) )
+            outputs["Identity"] = identity
+            outputs["Identity_1"] = identity1
+            outputs["Identity_2"] = identity2
         else:
             raise ValueError(f"Unsupported model type: {self.model_type}")
         points = outputs["Identity"].reshape(1434 // 3, 3)

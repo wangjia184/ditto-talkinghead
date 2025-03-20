@@ -1,6 +1,7 @@
 import numpy as np
 from ..utils.load_model import load_model
 
+import a2h
 
 def _transform_pts(pts, M):
     """ conduct similarity or affine transformation to the pts
@@ -27,9 +28,12 @@ class Landmark203:
         if self.model_type == "onnx":
             out_pts = self.model.run(None, {"input": inp})[0]
         elif self.model_type == "tensorrt":
-            self.model.setup({"input": inp})
-            self.model.infer()
-            out_pts = self.model.buffer[self.output_names[0]][0]
+            #print(inp.shape)
+            #self.model.setup({"input": inp})
+            #self.model.infer()
+            #out_pts = self.model.buffer[self.output_names[0]][0]
+            #print(out_pts.shape)
+            out_pts = a2h.detect_landmark203( np.ascontiguousarray(inp) )
         else:
             raise ValueError(f"Unsupported model type: {self.model_type}")
         return out_pts

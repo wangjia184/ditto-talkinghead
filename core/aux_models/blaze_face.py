@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 from ..utils.load_model import load_model
 
+import a2h
 
 def intersect(box_a, box_b):
     """We resize both arrays to [A,B,2] without new malloc:
@@ -106,10 +107,15 @@ class BlazeFace:
             for i, name in enumerate(self.output_names):
                 outputs[name] = out_list[i]
         elif self.model_type == "tensorrt":
-            self.model.setup({"input": image})
-            self.model.infer()
-            for name in self.output_names:
-                outputs[name] = self.model.buffer[name][0]
+            #print(image.shape)
+            #self.model.setup({"input": image})
+            #self.model.infer()
+            net_outputs = a2h.blazeface_detect( np.ascontiguousarray(image) )
+            outputs['regressors'] = net_outputs[0]
+            outputs['classificators'] = net_outputs[1]
+            #for name in self.output_names:
+            #    outputs[name] = self.model.buffer[name][0]
+             #   print(name, outputs[name].shape, outputs[name].dtype)
         else:
             raise ValueError(f"Unsupported model type: {self.model_type}")
         boxes = self.postprocess(outputs["regressors"], outputs["classificators"])

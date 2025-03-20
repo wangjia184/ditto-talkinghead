@@ -6,6 +6,7 @@ from skimage import transform as trans
 
 from ..utils.load_model import load_model
 
+import a2h
 
 def transform(data, center, output_size, scale, rotation):
     scale_ratio = scale
@@ -43,6 +44,7 @@ class Landmark106:
         kwargs["module_name"] = "Landmark106"
         kwargs["package_name"] = "..aux_models.modules"
 
+   
         self.model, self.model_type = load_model(model_path, device=device, **kwargs)
         self.device = device
 
@@ -61,9 +63,12 @@ class Landmark106:
         if self.model_type == "onnx":
             pred = self.model.run(None, {"data": blob})[0]
         elif self.model_type == "tensorrt":
-            self.model.setup({"data": blob})
-            self.model.infer()
-            pred = self.model.buffer[self.output_names[0]][0]
+            #print(blob.shape, blob.dtype)
+            #self.model.setup({"data": blob})
+            #self.model.infer()
+            #pred = self.model.buffer[self.output_names[0]][0]
+            #print(pred.shape, pred.dtype)
+            pred = a2h.detect_landmark106(blob)
         else:
             raise ValueError(f"Unsupported model type: {self.model_type}")
         return pred
