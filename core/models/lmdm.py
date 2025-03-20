@@ -2,6 +2,7 @@ import numpy as np
 import torch
 from ..utils.load_model import load_model
 
+import a2h
 
 def make_beta(n_timestep, cosine_s=8e-3):
     timesteps = (
@@ -88,9 +89,14 @@ class LMDM:
             pred = self.model.run(None, {"x": x, "cond_frame": cond_frame, "cond": cond, "time_cond": time_cond})
             pred_noise, x_start = pred[0], pred[1]
         elif self.model_type == "tensorrt":
-            self.model.setup({"x": x, "cond_frame": cond_frame, "cond": cond, "time_cond": time_cond})
-            self.model.infer()
-            pred_noise, x_start = self.model.buffer["pred_noise"][0], self.model.buffer["x_start"][0]
+            #print( x.shape, x.dtype, cond_frame.shape, cond_frame.dtype, cond.shape, cond.dtype, time_cond.shape, time_cond.dtype)
+            #self.model.setup({"x": x, "cond_frame": cond_frame, "cond": cond, "time_cond": time_cond})
+            #self.model.infer()
+            #pred_noise, x_start = self.model.buffer["pred_noise"][0], self.model.buffer["x_start"][0]
+            #print(pred_noise.shape, pred_noise.dtype, x_start.shape, x_start.dtype)
+            
+            pred_noise, x_start = a2h.predict_noise( np.ascontiguousarray(x), np.ascontiguousarray(cond_frame), np.ascontiguousarray(cond), time_cond[0])
+
         elif self.model_type == "pytorch":
             with torch.no_grad():
                 pred_noise, x_start = self.model(x, cond_frame, cond, time_cond)
