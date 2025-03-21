@@ -1,3 +1,4 @@
+import a2h
 import librosa
 import math
 import os
@@ -5,6 +6,8 @@ import numpy as np
 import random
 import torch
 import pickle
+
+a2h.setup()
 
 from stream_pipeline_online import StreamSDK
 
