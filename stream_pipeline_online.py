@@ -9,12 +9,13 @@ from core.atomic_components.condition_handler import ConditionHandler, _mirror_i
 from core.atomic_components.audio2motion import Audio2Motion
 from core.atomic_components.motion_stitch import MotionStitch
 from core.atomic_components.warp_f3d import WarpF3D
-from core.atomic_components.decode_f3d import DecodeF3D
+
 from core.atomic_components.putback import PutBack
 from core.atomic_components.writer import VideoWriterByImageIO
 from core.atomic_components.wav2feat import Wav2Feat
 from core.atomic_components.cfg import parse_cfg, print_cfg
 
+import a2h;
 
 """
 avatar_registrar_cfg:
@@ -59,7 +60,7 @@ class StreamSDK:
         self.audio2motion = Audio2Motion(lmdm_cfg)
         self.motion_stitch = MotionStitch(stitch_network_cfg)
         self.warp_f3d = WarpF3D(warp_network_cfg)
-        self.decode_f3d = DecodeF3D(decoder_cfg)
+
         self.putback = PutBack()
 
         self.wav2feat = Wav2Feat(**wav2feat_cfg)
@@ -328,7 +329,7 @@ class StreamSDK:
                 self.putback_queue.put(None)
                 break
             frame_idx, f_3d = item
-            render_img = self.decode_f3d(f_3d)
+            render_img = a2h.render_face(f_3d)
             self.putback_queue.put([frame_idx, render_img])
 
     def warp_f3d_worker(self):
