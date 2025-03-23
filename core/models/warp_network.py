@@ -17,23 +17,7 @@ class WarpNetwork:
         feature_3d: np.ndarray, shape (1, 32, 16, 64, 64)
         kp_source | kp_driving: np.ndarray, shape (1, 21, 3)
         """
-        if self.model_type == "onnx":
-            pred = self.model.run(None, {"feature_3d": feature_3d, "kp_source": kp_source, "kp_driving": kp_driving})[0]
-        elif self.model_type == "tensorrt":
-            #print( feature_3d.shape, feature_3d.dtype, kp_source.shape, kp_source.dtype, kp_driving.shape, kp_driving.dtype)
-            #self.model.setup({"feature_3d": feature_3d, "kp_source": kp_source, "kp_driving": kp_driving})
-            #self.model.infer()
-            #pred = self.model.buffer["out"][0].copy()
-            #print( pred.shape, pred.dtype)
-            pred = a2h.warp( np.ascontiguousarray(feature_3d), np.ascontiguousarray(kp_source), np.ascontiguousarray(kp_driving) )
-        elif self.model_type == 'pytorch':
-            with torch.no_grad(), torch.autocast(device_type=self.device[:4], dtype=torch.float16, enabled=True):
-                pred = self.model(
-                    torch.from_numpy(feature_3d).to(self.device), 
-                    torch.from_numpy(kp_source).to(self.device), 
-                    torch.from_numpy(kp_driving).to(self.device)
-                ).float().cpu().numpy()
-        else:
-            raise ValueError(f"Unsupported model type: {self.model_type}")
+        print( kp_source.shape, kp_driving.shape)
+        pred = a2h.warp( np.ascontiguousarray(feature_3d), np.ascontiguousarray(kp_source), np.ascontiguousarray(kp_driving) )
         
         return pred
