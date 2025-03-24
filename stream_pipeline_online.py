@@ -8,7 +8,6 @@ from core.atomic_components.avatar_registrar import AvatarRegistrar, smooth_x_s_
 from core.atomic_components.condition_handler import ConditionHandler, _mirror_index
 from core.atomic_components.audio2motion import Audio2Motion
 from core.atomic_components.motion_stitch import MotionStitch
-from core.atomic_components.warp_f3d import WarpF3D
 
 from core.atomic_components.putback import PutBack
 from core.atomic_components.writer import VideoWriterByImageIO
@@ -59,7 +58,6 @@ class StreamSDK:
         self.condition_handler = ConditionHandler(**condition_handler_cfg)
         self.audio2motion = Audio2Motion(lmdm_cfg)
         self.motion_stitch = MotionStitch(stitch_network_cfg)
-        self.warp_f3d = WarpF3D(warp_network_cfg)
 
         self.putback = PutBack()
 
@@ -350,7 +348,7 @@ class StreamSDK:
                 break
             frame_idx, x_s, x_d = item
             f_s = self.source_info["f_s_lst"][frame_idx]
-            f_3d = self.warp_f3d(f_s, x_s, x_d)
+            f_3d = a2h.warp_face(f_s, x_s, x_d)
             self.decode_f3d_queue.put([frame_idx, f_3d])
 
     def motion_stitch_worker(self):

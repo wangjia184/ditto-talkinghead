@@ -45,6 +45,7 @@ class LMDM:
         betas = torch.Tensor(make_beta(n_timestep=self.n_timestep))
         alphas = 1.0 - betas
         self.alphas_cumprod = torch.cumprod(alphas, axis=0).cpu().numpy()
+    
 
     def _setup_np(self, sampling_timesteps=50):
         if self.sampling_timesteps == sampling_timesteps:
@@ -59,8 +60,9 @@ class LMDM:
         times = torch.linspace(-1, total_timesteps - 1, steps=sampling_timesteps + 1)   # [-1, 0, 1, 2, ..., T-1] when sampling_timesteps == total_timesteps
         times = list(reversed(times.int().tolist()))
         self.time_pairs = list(zip(times[:-1], times[1:])) # [(T-1, T-2), (T-2, T-3), ..., (1, 0), (0, -1)]
+        # self.time_pairs = [(999, 899), (899, 799), (799, 699), (699, 599), (599, 499), (499, 399), (399, 299), (299, 199), (199, 99), (99, -1)]
 
-        self.time_cond_list = []
+        self.time_cond_list = [] # [[999], [899], [799], [699], [599], [499], [399], [299], [199], [99]]
         self.alpha_next_sqrt_list = []
         self.sigma_list = []
         self.c_list = []
@@ -76,6 +78,10 @@ class LMDM:
             alpha_next = self.alphas_cumprod[time_next]
 
             sigma = eta * np.sqrt((1 - alpha / alpha_next) * (1 - alpha_next) / (1 - alpha))
+            #           |←----------------------------→|
+            # x_{t-1} = [√α_{t-1}x0] + [c_tϵ] + [σ_t z]
+            #               │            │        │
+            #             α_{t-1}    +  c_t²  +  σ_t² = 1
             c = np.sqrt(1 - alpha_next - sigma ** 2)
             noise = np.random.randn(*shape).astype(np.float32)
             
@@ -83,26 +89,10 @@ class LMDM:
             self.sigma_list.append(sigma)
             self.c_list.append(c)
             self.noise_list.append(noise)
+ 
 
     def _one_step(self, x, cond_frame, cond, time_cond):
-        if self.model_type == "onnx":
-            pred = self.model.run(None, {"x": x, "cond_frame": cond_frame, "cond": cond, "time_cond": time_cond})
-            pred_noise, x_start = pred[0], pred[1]
-        elif self.model_type == "tensorrt":
-            #print( x.shape, x.dtype, cond_frame.shape, cond_frame.dtype, cond.shape, cond.dtype, time_cond.shape, time_cond.dtype)
-            #self.model.setup({"x": x, "cond_frame": cond_frame, "cond": cond, "time_cond": time_cond})
-            #self.model.infer()
-            #pred_noise, x_start = self.model.buffer["pred_noise"][0], self.model.buffer["x_start"][0]
-            #print(pred_noise.shape, pred_noise.dtype, x_start.shape, x_start.dtype)
-            
-            pred_noise, x_start = a2h.predict_noise( np.ascontiguousarray(x), np.ascontiguousarray(cond_frame), np.ascontiguousarray(cond), time_cond[0])
-
-        elif self.model_type == "pytorch":
-            with torch.no_grad():
-                pred_noise, x_start = self.model(x, cond_frame, cond, time_cond)
-        else:
-            raise ValueError(f"Unsupported model type: {self.model_type}")
-        
+        pred_noise, x_start = a2h.predict_noise( np.ascontiguousarray(x), np.ascontiguousarray(cond_frame), np.ascontiguousarray(cond), time_cond[0])
         return pred_noise, x_start
 
     def _call_np(self, kp_cond, aud_cond, sampling_timesteps):
@@ -133,6 +123,7 @@ class LMDM:
         return x
 
     def __call__(self, kp_cond, aud_cond, sampling_timesteps):
+        return a2h.predict_motion(kp_cond, aud_cond)
         if self.model_type == "pytorch":
             pred_kp_seq = self.model.ddim_sample(
                 torch.from_numpy(kp_cond).to(self.device), 

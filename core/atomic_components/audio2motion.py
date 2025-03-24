@@ -1,6 +1,7 @@
 import numpy as np
 from ..models.lmdm import LMDM
 
+import a2h
 
 """
 lmdm_cfg = {
@@ -167,7 +168,9 @@ class Audio2Motion:
         aud_cond: (1, seq_frames, dim)
         """
 
-        pred_kp_seq = self.lmdm(self.kp_cond, aud_cond, self.sampling_timesteps)
+        #pred_kp_seq = self.lmdm(self.kp_cond, aud_cond, self.sampling_timesteps)
+        assert self.sampling_timesteps == 10
+        pred_kp_seq = a2h.predict_motion(self.kp_cond, aud_cond)
         if res_kp_seq is None:
             res_kp_seq = pred_kp_seq   # [1, seq_frames, dim]
             res_kp_seq = self._smo(res_kp_seq, 0, res_kp_seq.shape[1])
