@@ -6,8 +6,7 @@ from tqdm import tqdm
 
 from core.atomic_components.avatar_registrar import AvatarRegistrar, smooth_x_s_info_lst
 from core.atomic_components.condition_handler import ConditionHandler, _mirror_index
-from core.atomic_components.audio2motion import Audio2Motion
-from core.atomic_components.motion_stitch import MotionStitch
+from core.atomic_components.audio2motion import Audio2Motion, _cvt_LP_motion_info
 
 from core.atomic_components.putback import PutBack
 from core.atomic_components.writer import VideoWriterByImageIO
@@ -57,7 +56,7 @@ class StreamSDK:
         self.avatar_registrar = AvatarRegistrar(**avatar_registrar_cfg)
         self.condition_handler = ConditionHandler(**condition_handler_cfg)
         self.audio2motion = Audio2Motion(lmdm_cfg)
-        self.motion_stitch = MotionStitch(stitch_network_cfg)
+
 
         self.putback = PutBack()
 
@@ -71,7 +70,7 @@ class StreamSDK:
 
     def setup_Nd(self, N_d, fade_in=-1, fade_out=-1, ctrl_info=None):
         # for eye open at video end
-        self.motion_stitch.set_Nd(N_d)
+        #self.motion_stitch.set_Nd(N_d)
 
         # for fade in/out alpha
         if ctrl_info is None:
@@ -195,25 +194,14 @@ class StreamSDK:
             smo_k_d=self.smo_k_d,
         )
 
+        kp_source = _cvt_LP_motion_info(x_s_info_0, mode='dic2arr', ignore_keys={'kp'})[None]
+        self.s_kp_cond = kp_source.copy().reshape(1, -1)
+        print(self.s_kp_cond.shape)
+
         # ======== Setup Motion Stitch ========
         is_image_flag = source_info["is_image_flag"]
         x_s_info = source_info['x_s_info_lst'][0]
-        self.motion_stitch.setup(
-            N_d=self.N_d,
-            use_d_keys=self.use_d_keys,
-            relative_d=self.relative_d,
-            drive_eye=self.drive_eye,
-            delta_eye_arr=self.delta_eye_arr,
-            delta_eye_open_n=self.delta_eye_open_n,
-            fade_out_keys=self.fade_out_keys,
-            fade_type=self.fade_type,
-            flag_stitching=self.flag_stitching,
-            is_image_flag=is_image_flag,
-            x_s_info=x_s_info,
-            d0=None,
-            ch_info=self.ch_info,
-            overall_ctrl_info=self.overall_ctrl_info,
-        )
+
 
         # ======== Video Writer ========
         self.output_path = output_path
@@ -222,12 +210,11 @@ class StreamSDK:
         self.writer_pbar = tqdm(desc="writer")
 
         # ======== Audio Feat Buffer ========
-        if self.online_mode:
-            # buffer: seq_frames - valid_clip_len
-            self.audio_feat = self.wav2feat.wav2feat(np.zeros((self.overlap_v2 * 640,), dtype=np.float32), sr=16000)
-            assert len(self.audio_feat) == self.overlap_v2, f"{len(self.audio_feat)}"
-        else:
-            self.audio_feat = np.zeros((0, self.wav2feat.feat_dim), dtype=np.float32)
+ 
+        # buffer: seq_frames - valid_clip_len
+        self.audio_feat = self.wav2feat.wav2feat(np.zeros((self.overlap_v2 * 640,), dtype=np.float32), sr=16000)
+        assert len(self.audio_feat) == self.overlap_v2, f"{len(self.audio_feat)}"
+
         self.cond_idx_start = 0 - len(self.audio_feat)
 
         # ======== Setup Worker Threads ========
@@ -370,7 +357,8 @@ class StreamSDK:
             
             frame_idx, x_d_info, ctrl_kwargs = item
             x_s_info = self.source_info["x_s_info_lst"][frame_idx]
-            x_s, x_d = self.motion_stitch(x_s_info, x_d_info, **ctrl_kwargs)
+            #x_s, x_d = self.motion_stitch(x_s_info, x_d_info, **ctrl_kwargs)
+            x_s, x_d = a2h.stitch_motion(x_s_info, x_d_info)
             self.warp_f3d_queue.put([frame_idx, x_s, x_d])
 
     def audio2motion_worker(self):
@@ -427,12 +415,15 @@ class StreamSDK:
                         aud_feat = np.concatenate([aud_feat, pad], 0)
 
                 aud_cond = self.condition_handler(aud_feat, global_idx + self.cond_idx_start)[None]
-                res_kp_seq = self.audio2motion(aud_cond, res_kp_seq)
+                #res_kp_seq = self.audio2motion(aud_cond, res_kp_seq)
+                if res_kp_seq is None:
+                    res_kp_seq = np.zeros((1, 0, 265), dtype=np.float32) 
+                res_kp_seq = a2h.audio2motion( self.s_kp_cond, np.ascontiguousarray(aud_cond), np.ascontiguousarray(res_kp_seq) )
                 if res_kp_seq_valid_start is None:
                     # online mode, first chunk
                     res_kp_seq_valid_start = res_kp_seq.shape[1] - self.audio2motion.fuse_length
-                    d0 = self.audio2motion.cvt_fmt(res_kp_seq[0:1])[0]
-                    self.motion_stitch.d0 = d0
+                    #d0 = self.audio2motion.cvt_fmt(res_kp_seq[0:1])[0]
+                    #self.motion_stitch.d0 = d0
 
                     local_idx += real_valid_len
                     global_idx += real_valid_len
