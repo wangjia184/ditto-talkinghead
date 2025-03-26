@@ -80,6 +80,7 @@ class AvatarRegistrar:
             "eye_open_lst": [],
             "eye_ball_lst": [],
         }
+       
         keys = ["x_s_info", "f_s", "M_c2o", "eye_open", "eye_ball"]
         last_lmk = None
         for rgb in rgb_list:

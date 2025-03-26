@@ -44,6 +44,11 @@ class ConditionHandler:
 
         self.seq_frames = seq_frames
 
+        print("use_emo:", use_emo)
+        print("use_sc:", use_sc)
+        print("use_eye_open:", use_eye_open)
+        print("use_eye_ball:", use_eye_ball)
+
     def setup(self, setup_info, emo, eye_f0_mode=False, ch_info=None):
         """
         emo: int | [int] | [[int]] | numpy
@@ -62,7 +67,10 @@ class ConditionHandler:
         
         if self.use_eye_open:
             self.eye_open_lst = np.concatenate(source_info["eye_open_lst"], 0)  # [n, 2]
+            #self.eye_open_lst = np.array([[0.0, 0.0]], dtype=np.float32)
+            print( "self.eye_open_lst:", self.eye_open_lst) # [[1.0678004 1.083962 ]]
             self.num_eye_open = len(self.eye_open_lst)
+            print( "self.num_eye_open:", self.num_eye_open)  #1
             if self.num_eye_open == 1 or self.eye_f0_mode:
                 self.eye_open_seq = np.stack([self.eye_open_lst[0]] * self.seq_frames, 0)
             else:
@@ -118,7 +126,6 @@ class ConditionHandler:
         aud_feat: [n, 1024]
         idx: int, <0 means pad (first clip buffer)
         """
-
         frame_num = len(aud_feat)
         more_cond = [aud_feat]
         if self.use_emo:

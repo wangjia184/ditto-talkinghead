@@ -93,16 +93,7 @@ class InsightFaceDet:
         ]
 
     def _run_model(self, blob):
-        if self.model_type == "onnx":
-            net_outs = self.model.run(None, {"image": blob})
-        elif self.model_type == "tensorrt":
-            #self.model.setup({"image": blob})
-            #self.model.infer()
-            #net_outs = [self.model.buffer[name][0] for name in self.output_names]
-            net_outs = a2h.insightface_detect(blob)
-        else:
-            raise ValueError(f"Unsupported model type: {self.model_type}")
-        return net_outs
+        return a2h.insightface_detect(blob)
 
     def _forward(self, img, threshold):
         """
@@ -111,20 +102,25 @@ class InsightFaceDet:
         scores_list = []
         bboxes_list = []
         kpss_list = []
-        input_size = tuple(img.shape[0:2][::-1])
-        blob = cv2.dnn.blobFromImage(img, 1.0/self.input_std, input_size, (self.input_mean, self.input_mean, self.input_mean), swapRB=True)
+        #input_size = tuple(img.shape[0:2][::-1])
+        #blob = cv2.dnn.blobFromImage(img, 1.0/self.input_std, input_size, (self.input_mean, self.input_mean, self.input_mean), swapRB=True)
+        blob = img
         # (1, 3, 512, 512)
-        net_outs = self._run_model(blob)
+        net_outs =  a2h.insightface_detect(img)
 
-        input_height = blob.shape[2]
-        input_width = blob.shape[3]
-        fmc = self.fmc
+        input_height = 512#blob.shape[2]
+        input_width = 512#blob.shape[3]
+        fmc = self.fmc #3
+        print("threshold", threshold)
+        print("self.fmc", self.fmc)
+        print("self.use_kps", self.use_kps)
+        print("self.center_cache", self.center_cache)
         for idx, stride in enumerate(self._feat_stride_fpn):
+            print( idx, stride)
             scores = net_outs[idx]
             bbox_preds = net_outs[idx+fmc]
             bbox_preds = bbox_preds * stride
-            if self.use_kps:
-                kps_preds = net_outs[idx+fmc*2] * stride
+            kps_preds = net_outs[idx+fmc*2] * stride
             height = input_height // stride
             width = input_width // stride
             # K = height * width
@@ -146,14 +142,17 @@ class InsightFaceDet:
             pos_bboxes = bboxes[pos_inds]
             scores_list.append(pos_scores)
             bboxes_list.append(pos_bboxes)
-            if self.use_kps:
-                kpss = distance2kps(anchor_centers, kps_preds)
-                kpss = kpss.reshape( (kpss.shape[0], -1, 2) )
-                pos_kpss = kpss[pos_inds]
-                kpss_list.append(pos_kpss)
+
+            kpss = distance2kps(anchor_centers, kps_preds)
+            kpss = kpss.reshape( (kpss.shape[0], -1, 2) )
+            pos_kpss = kpss[pos_inds]
+            kpss_list.append(pos_kpss)
+
+            print( pos_scores, pos_bboxes, pos_kpss)
         return scores_list, bboxes_list, kpss_list
     
     def detect(self, img, input_size=None, max_num=0, metric='default', det_thresh=None):
+        return a2h.insightface_detect(img)
         input_size = self.input_size if input_size is None else input_size
         det_thresh = self.det_thresh if det_thresh is None else det_thresh
             
@@ -166,27 +165,32 @@ class InsightFaceDet:
             new_width = input_size[0]
             new_height = int(new_width * im_ratio)
         det_scale = float(new_height) / img.shape[0]
-        resized_img = cv2.resize(img, (new_width, new_height))
-        det_img = np.zeros( (input_size[1], input_size[0], 3), dtype=np.uint8 )
-        det_img[:new_height, :new_width, :] = resized_img
-
-        scores_list, bboxes_list, kpss_list = self._forward(det_img, det_thresh)
+ 
+        #resized_img = cv2.resize(img, (new_width, new_height))
+        
+        #det_img = np.zeros( (input_size[1], input_size[0], 3), dtype=np.uint8 )
+        #det_img[:new_height, :new_width, :] = resized_img
+        
+        #scores_list, bboxes_list, kpss_list = self._forward(img, det_thresh)
+        scores_list, bboxes_list, kpss_list = a2h.insightface_detect(img)
+        print( scores_list, bboxes_list, kpss_list)
 
         scores = np.vstack(scores_list)
         scores_ravel = scores.ravel()
         order = scores_ravel.argsort()[::-1]
         bboxes = np.vstack(bboxes_list) / det_scale
-        if self.use_kps:
-            kpss = np.vstack(kpss_list) / det_scale
+        kpss = np.vstack(kpss_list) / det_scale
         pre_det = np.hstack((bboxes, scores)).astype(np.float32, copy=False)
         pre_det = pre_det[order, :]
+        print(pre_det)
         keep = self.nms(pre_det)
+        print("keep", keep)
         det = pre_det[keep, :]
-        if self.use_kps:
-            kpss = kpss[order,:,:]
-            kpss = kpss[keep,:,:]
-        else:
-            kpss = None
+
+        kpss = kpss[order,:,:]
+        kpss = kpss[keep,:,:]
+        print("max_num", max_num)
+        print("self.nms_thresh", self.nms_thresh)
         if max_num > 0 and det.shape[0] > max_num:
             area = (det[:, 2] - det[:, 0]) * (det[:, 3] - det[:, 1])
             img_center = img.shape[0] // 2, img.shape[1] // 2
@@ -204,6 +208,9 @@ class InsightFaceDet:
             det = det[bindex, :]
             if kpss is not None:
                 kpss = kpss[bindex, :]
+
+        print( "det", det) # [[578.951      308.7893     659.48627    419.8099       0.81669873]]
+        print( "kpss", kpss)
         return det, kpss
     
     def nms(self, dets):

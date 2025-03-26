@@ -44,6 +44,7 @@ def load_image(image_path, max_dim=-1):
     new_h, new_w, rsz_flag = check_resize(h, w, max_dim)
     if rsz_flag:
         img = cv2.resize(img, (new_w, new_h))
+    # (H, W, 3) uint8
     return img
 
 

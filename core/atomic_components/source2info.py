@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 
-from ..aux_models.insightface_det import InsightFaceDet
+#from ..aux_models.insightface_det import InsightFaceDet
 from ..aux_models.insightface_landmark106 import Landmark106
 from ..aux_models.landmark203 import Landmark203
 from ..aux_models.mediapipe_landmark478 import Landmark478
@@ -11,6 +11,7 @@ from ..models.motion_extractor import MotionExtractor
 from ..utils.crop import crop_image
 from ..utils.eye_info import EyeAttrUtilsByMP
 
+import a2h
 
 """
 insightface_det_cfg = {
@@ -56,7 +57,7 @@ class Source2Info:
         appearance_extractor_cfg,
         motion_extractor_cfg,
     ):
-        self.insightface_det = InsightFaceDet(**insightface_det_cfg)
+        #self.insightface_det = InsightFaceDet(**insightface_det_cfg)
         self.landmark106 = Landmark106(**landmark106_cfg)
         self.landmark203 = Landmark203(**landmark203_cfg)
         self.landmark478 = Landmark478(**landmark478_cfg)
@@ -66,9 +67,9 @@ class Source2Info:
 
     def _crop(self, img, last_lmk=None, **kwargs):
         # img_rgb -> det->landmark106->landmark203->crop
-
+        print(img.shape)
         if last_lmk is None:  # det for first frame or image
-            det, _ = self.insightface_det(img)
+            det, _ = a2h.insightface_detect(img)
             boxes = det[np.argsort(-(det[:, 2] - det[:, 0]) * (det[:, 3] - det[:, 1]))]
             if len(boxes) == 0:
                 return None
