@@ -25,18 +25,7 @@ class Landmark203:
         self.dsize = 224
 
     def _run_model(self, inp):
-        if self.model_type == "onnx":
-            out_pts = self.model.run(None, {"input": inp})[0]
-        elif self.model_type == "tensorrt":
-            #print(inp.shape)
-            #self.model.setup({"input": inp})
-            #self.model.infer()
-            #out_pts = self.model.buffer[self.output_names[0]][0]
-            #print(out_pts.shape)
-            out_pts = a2h.detect_landmark203( np.ascontiguousarray(inp) )
-        else:
-            raise ValueError(f"Unsupported model type: {self.model_type}")
-        return out_pts
+        return a2h.detect_landmark203( np.ascontiguousarray(inp) )
     
     def run(self, img_crop_rgb, M_c2o=None):
         # img_crop_rgb: 224x224

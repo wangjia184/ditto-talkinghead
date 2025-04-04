@@ -48,6 +48,11 @@ def run(SDK: StreamSDK, audio_path: str, source_path: str, output_path: str, mor
 
     online_mode = SDK.online_mode
     if online_mode:
+
+        list_emb = a2h.audio_append(audio)
+        for emb in list_emb:
+            SDK.run_chunk2(emb)
+        """
         # 25 fps, duration of each frame = 40ms; 16kHz x 0.04 = 640 samples per each frame
         # 3 frames for previous chunk
         # 5 frames of current chunk
@@ -60,6 +65,7 @@ def run(SDK: StreamSDK, audio_path: str, source_path: str, output_path: str, mor
             if len(audio_chunk) < split_len:
                 audio_chunk = np.pad(audio_chunk, (0, split_len - len(audio_chunk)), mode="constant")
             SDK.run_chunk(audio_chunk, chunksize)
+        """
     else:
         aud_feat = SDK.wav2feat.wav2feat(audio)
         SDK.audio2motion_queue.put(aud_feat)

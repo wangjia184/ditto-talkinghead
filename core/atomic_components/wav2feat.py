@@ -75,8 +75,9 @@ class Wav2FeatHubert:
         valid_feat_e = - chunksize[2] * 2   # -2
 
         encoding_chunk = self.hubert(audio_chunk)
-        valid_encoding = encoding_chunk[valid_feat_s:valid_feat_e]
-        valid_feat = valid_encoding.reshape(chunksize[1], 2, 1024).mean(1)    # [5, 1024]
+        # encoding_chunk.shape = [20, 1024]
+        valid_encoding = encoding_chunk[valid_feat_s:valid_feat_e]  #[10, 1024]
+        valid_feat = valid_encoding.reshape(chunksize[1], 2, 1024).mean(1)    # #[5, 2, 1024] -> [5, 1024]
         return valid_feat
 
     def wav2feat(self, audio, sr, chunksize=(3, 5, 2)):

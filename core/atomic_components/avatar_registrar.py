@@ -3,6 +3,7 @@ import numpy as np
 from .loader import load_source_frames
 from .source2info import Source2Info
 
+import a2h
 
 def _mean_filter(arr, k):
     n = arr.shape[0]
@@ -84,11 +85,12 @@ class AvatarRegistrar:
         keys = ["x_s_info", "f_s", "M_c2o", "eye_open", "eye_ball"]
         last_lmk = None
         for rgb in rgb_list:
-            info = self.source2info(rgb, last_lmk, **kwargs)
+            #info = self.source2info(rgb, last_lmk, **kwargs)
+            info = a2h.extract_face(rgb)
             for k in keys:
                 source_info[f"{k}_lst"].append(info[k])
 
-            last_lmk = info["lmk203"]
+            last_lmk = None #info["lmk203"]
 
         sc_f0 = source_info['x_s_info_lst'][0]['kp'].flatten()
 

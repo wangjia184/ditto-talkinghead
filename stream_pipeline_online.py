@@ -36,6 +36,30 @@ wav2feat_cfg:
     w2f_type
 """
 
+def array_to_rust_string(padding_feat: np.ndarray) -> str:
+    # 确保输入形状正确（14,5,1024）
+    assert padding_feat.shape == (14,5,1024), "Input must be shape (14,5,1024)"
+    
+    # 转换为字符串表示
+    rust_str = "[\n"
+    for i in range(14):
+        rust_str += f"  [\n"  # 第二层开始
+        
+        for j in range(5):
+            # 第三层数组：每个1024元素的f32数组
+            row = padding_feat[i,j].tolist()[:1024]  # 确保截断到精确长度
+            
+            # 将浮点数转换为字符串，并用逗号分隔（注意 Rust 需要 f32 后缀）
+            formatted_row = ", ".join(f"{x:.7f}f32" for x in row)
+            
+            rust_str += f"    [{formatted_row}],\n"
+        
+        rust_str += "  ],\n"  # 第二层结束
+    
+    rust_str += "]"
+
+    return rust_str
+
 
 class StreamSDK:
     def __init__(self, cfg_pkl, data_root, **kwargs):
@@ -180,6 +204,7 @@ class StreamSDK:
 
         # ======== Setup Condition Handler ========
         self.condition_handler.setup(source_info, self.emo, eye_f0_mode=self.eye_f0_mode, ch_info=self.ch_info)
+        #print( source_info["sc"] )
 
         # ======== Setup Audio2Motion (LMDM) ========
         x_s_info_0 = self.condition_handler.x_s_info_0
@@ -196,7 +221,7 @@ class StreamSDK:
 
         kp_source = _cvt_LP_motion_info(x_s_info_0, mode='dic2arr', ignore_keys={'kp'})[None]
         self.s_kp_cond = kp_source.copy().reshape(1, -1)
-        print(self.s_kp_cond.shape)
+        
 
         # ======== Setup Motion Stitch ========
         is_image_flag = source_info["is_image_flag"]
@@ -214,6 +239,7 @@ class StreamSDK:
         # buffer: seq_frames - valid_clip_len
         self.audio_feat = self.wav2feat.wav2feat(np.zeros((self.overlap_v2 * 640,), dtype=np.float32), sr=16000)
         assert len(self.audio_feat) == self.overlap_v2, f"{len(self.audio_feat)}"
+         
 
         self.cond_idx_start = 0 - len(self.audio_feat)
 
@@ -294,7 +320,10 @@ class StreamSDK:
             frame_idx, render_img = item
             frame_rgb = self.source_info["img_rgb_lst"][frame_idx]
             M_c2o = self.source_info["M_c2o_lst"][frame_idx]
-            res_frame_rgb = self.putback(frame_rgb, render_img, M_c2o)
+            #print(frame_rgb.shape, frame_rgb.dtype, render_img.shape, render_img.dtype, M_c2o.shape, M_c2o.dtype)
+            res_frame_rgb = a2h.render_face( np.ascontiguousarray(render_img), np.ascontiguousarray(frame_rgb),  np.ascontiguousarray(M_c2o))
+            #res_frame_rgb = self.putback(frame_rgb, render_img, M_c2o)
+            #print(res_frame_rgb.shape, res_frame_rgb.dtype)
             self.writer_queue.put(res_frame_rgb)
 
     def decode_f3d_worker(self):
@@ -314,8 +343,8 @@ class StreamSDK:
                 self.putback_queue.put(None)
                 break
             frame_idx, f_3d = item
-            render_img = a2h.render_face(f_3d)
-            self.putback_queue.put([frame_idx, render_img])
+            #render_img = a2h.render_face(f_3d)
+            self.putback_queue.put([frame_idx, f_3d])
 
     def warp_f3d_worker(self):
         try:
@@ -370,13 +399,16 @@ class StreamSDK:
         
     def _audio2motion_worker(self):
         is_end = False
-        seq_frames = self.audio2motion.seq_frames
-        valid_clip_len = self.audio2motion.valid_clip_len
+        seq_frames = self.audio2motion.seq_frames #80
+        valid_clip_len = self.audio2motion.valid_clip_len #10
+        assert valid_clip_len == 10
         aud_feat_dim = self.wav2feat.feat_dim
+        assert aud_feat_dim == 1024
         item_buffer = np.zeros((0, aud_feat_dim), dtype=np.float32)
 
         res_kp_seq = None
         res_kp_seq_valid_start = None if self.online_mode else 0
+
         
         global_idx = 0   # frame idx, for template
         local_idx = 0    # for cur audio_feat
@@ -388,20 +420,29 @@ class StreamSDK:
                 continue
             if item is None:
                 is_end = True
+                a2h.flush_audio_chunk()
             else:
-                item_buffer = np.concatenate([item_buffer, item], 0)
+                #print( "self.source_info['sc']", self.source_info['sc'] )
+                a2h.push_audio_chunk(item, self.source_info['sc'])
+                #item_buffer = np.concatenate([item_buffer, item], 0)
 
+            """
             if not is_end and item_buffer.shape[0] < valid_clip_len:
                 # wait at least valid_clip_len new item
                 continue
             else:
                 self.audio_feat = np.concatenate([self.audio_feat, item_buffer], 0)
                 item_buffer = np.zeros((0, aud_feat_dim), dtype=np.float32)
-
+            """
             while True:
                 # print("self.audio_feat.shape:", self.audio_feat.shape, "local_idx:", local_idx, "global_idx:", global_idx)
-                aud_feat = self.audio_feat[local_idx: local_idx+seq_frames]
+                #aud_feat = self.audio_feat[local_idx: local_idx+seq_frames]
+                aud_cond = a2h.pop_audio_condition()
                 real_valid_len = valid_clip_len
+                if aud_cond is None:
+                    break
+                #aud_cond = aud_cond[:, :, :1024].reshape( 80, 1024)
+                """
                 if len(aud_feat) == 0:
                     break
                 elif len(aud_feat) < seq_frames:
@@ -413,12 +454,15 @@ class StreamSDK:
                         real_valid_len = len(aud_feat)
                         pad = np.stack([aud_feat[-1]] * (seq_frames - len(aud_feat)), 0)
                         aud_feat = np.concatenate([aud_feat, pad], 0)
+                """
 
-                aud_cond = self.condition_handler(aud_feat, global_idx + self.cond_idx_start)[None]
+                #print("aud_feat", aud_feat)
+                #print("pop_audio_condition", a2h.pop_audio_condition())
+                #aud_cond = self.condition_handler(aud_cond, global_idx + self.cond_idx_start)[None]
                 #res_kp_seq = self.audio2motion(aud_cond, res_kp_seq)
                 if res_kp_seq is None:
                     res_kp_seq = np.zeros((1, 0, 265), dtype=np.float32) 
-                res_kp_seq = a2h.audio2motion( self.s_kp_cond, np.ascontiguousarray(aud_cond), np.ascontiguousarray(res_kp_seq) )
+                res_kp_seq = a2h.audio2motion( self.s_kp_cond, np.ascontiguousarray(aud_cond), np.ascontiguousarray(res_kp_seq) ) # [1, frames, 265]
                 if res_kp_seq_valid_start is None:
                     # online mode, first chunk
                     res_kp_seq_valid_start = res_kp_seq.shape[1] - self.audio2motion.fuse_length
@@ -429,13 +473,14 @@ class StreamSDK:
                     global_idx += real_valid_len
                     continue
                 else:
+                    print( "\nres_kp_seq_valid_start", res_kp_seq_valid_start, res_kp_seq.shape)
                     valid_res_kp_seq = res_kp_seq[:, res_kp_seq_valid_start: res_kp_seq_valid_start + real_valid_len]
                     x_d_info_list = self.audio2motion.cvt_fmt(valid_res_kp_seq)
+                    # len(x_d_info_list) = 10
 
                     for x_d_info in x_d_info_list:
                         frame_idx = _mirror_index(gen_frame_idx, self.source_info_frames)
                         ctrl_kwargs = self._get_ctrl_info(gen_frame_idx)
-
                         while not self.stop_event.is_set():
                             try:
                                 self.motion_stitch_queue.put([frame_idx, x_d_info, ctrl_kwargs], timeout=1)
@@ -457,14 +502,16 @@ class StreamSDK:
                     res_kp_seq = res_kp_seq[:, cut_L:]
                     res_kp_seq_valid_start -= cut_L
 
-                if local_idx >= len(self.audio_feat):
-                    break
+                #if local_idx >= len(self.audio_feat):
+                #    break
 
+            """
             L = len(self.audio_feat)
             if L > seq_frames * 2:
                 cut_L = L - seq_frames * 2
                 self.audio_feat = self.audio_feat[cut_L:]
                 local_idx -= cut_L
+            """
 
             if is_end:
                 break
@@ -491,12 +538,22 @@ class StreamSDK:
     def run_chunk(self, audio_chunk, chunksize=(3, 5, 2)):
         # only for hubert
         aud_feat = self.wav2feat(audio_chunk, chunksize=chunksize)
+        print( "audio_chunk", audio_chunk.shape, aud_feat.shape)
         while not self.stop_event.is_set():
             try:
                 self.audio2motion_queue.put(aud_feat, timeout=1)
                 break
             except queue.Full:
-                motion_stitch_queue
+                #motion_stitch_queue
+                continue
+
+    def run_chunk2(self, emb):
+        while not self.stop_event.is_set():
+            try:
+                self.audio2motion_queue.put(emb, timeout=1)
+                break
+            except queue.Full:
+                #motion_stitch_queue
                 continue
 
 

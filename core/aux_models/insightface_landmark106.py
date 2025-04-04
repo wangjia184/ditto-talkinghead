@@ -20,10 +20,20 @@ def transform(data, center, output_size, scale, rotation):
     t4 = trans.SimilarityTransform(translation=(output_size / 2,
                                                 output_size / 2))
     t = t1 + t2 + t3 + t4
+    # [[   1.1529392 ,    0.        , -617.92144775],
+    #  [   0.        ,    1.1529392 , -324.01531982],
+    #  [   0.        ,    0.        ,    1.        ]]
     M = t.params[0:2]
+    #[[   1.1529392     0.         -617.92144775]
+    # [   0.            1.1529392  -324.01531982]]
+
+
     cropped = cv2.warpAffine(data,
                              M, (output_size, output_size),
                              borderValue=0.0)
+    
+    print(cropped.shape)
+
     return cropped, M
    
 
@@ -60,20 +70,11 @@ class Landmark106:
         self.output_names = ["fc1"]
 
     def _run_model(self, blob):
-        if self.model_type == "onnx":
-            pred = self.model.run(None, {"data": blob})[0]
-        elif self.model_type == "tensorrt":
-            #print(blob.shape, blob.dtype)
-            #self.model.setup({"data": blob})
-            #self.model.infer()
-            #pred = self.model.buffer[self.output_names[0]][0]
-            #print(pred.shape, pred.dtype)
-            pred = a2h.detect_landmark106(blob)
-        else:
-            raise ValueError(f"Unsupported model type: {self.model_type}")
-        return pred
+        return a2h.detect_landmark106(blob)
     
     def get(self, img, bbox):
+        return
+        # bbox = [[578.951      308.7893     659.48627    419.8099       0.81669873]]
         w, h = (bbox[2] - bbox[0]), (bbox[3] - bbox[1])
         center = (bbox[2] + bbox[0]) / 2, (bbox[3] + bbox[1]) / 2
         rotate = 0
@@ -81,19 +82,23 @@ class Landmark106:
         
         aimg, M = transform(img, center, self.input_size[0], _scale, rotate)
         input_size = tuple(aimg.shape[0:2][::-1])
+
+        return a2h.detect_landmark106(img, bbox[0], bbox[1], bbox[2], bbox[3])
         
-        blob = cv2.dnn.blobFromImage(aimg, 1.0/self.input_std, input_size, (self.input_mean, self.input_mean, self.input_mean), swapRB=True)
+        #blob = cv2.dnn.blobFromImage(aimg, 1.0, input_size, (0, 0, 0), swapRB=True)
+        #print(blob)
 
-        pred = self._run_model(blob)
+        #pred = self._run_model(blob) 
 
-        pred = pred.reshape((-1, 2))
-        if self.lmk_num < pred.shape[0]:
-            pred = pred[self.lmk_num*-1:,:]
+        #pred = pred.reshape((-1, 2))
+        #if pred.shape[0] > 106:
+        #    pred = pred[self.lmk_num*-1:,:]
         pred[:, 0:2] += 1
-        pred[:, 0:2] *= (self.input_size[0] // 2)
+        pred[:, 0:2] *= (192 // 2)
 
-        IM = cv2.invertAffineTransform(M)
+        #IM = cv2.invertAffineTransform(M)
         pred = trans_points2d(pred, IM)
+        print( pred )
         return pred
 
     def __call__(self, img, bbox):

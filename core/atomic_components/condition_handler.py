@@ -136,6 +136,19 @@ class ConditionHandler:
             else:
                 emo_idx_list = [max(i, 0) % self.num_emo for i in range(idx, idx + frame_num)]
                 emo_seq = self.emo_lst[emo_idx_list]
+             
+            fixed_emo_row = np.array(
+                [6.18240621e-04,
+                8.23553783e-05,
+                7.07766219e-07,
+                9.90013599e-01,
+                7.17796292e-03,
+                1.77400396e-03,
+                1.11169702e-05,
+                3.22076608e-04], 
+                dtype=np.float32  
+            )
+            emo_seq = np.repeat(fixed_emo_row[np.newaxis, :], frame_num, axis=0)
             more_cond.append(emo_seq)
 
         if self.use_eye_open:
@@ -148,6 +161,7 @@ class ConditionHandler:
                     eye_idx_list = [_mirror_index(max(i, 0), self.num_eye_open) for i in range(idx, idx + frame_num)]
                 eye_open_seq = self.eye_open_lst[eye_idx_list]
             more_cond.append(eye_open_seq)
+            #print("eye_open_seq", eye_open_seq)
 
         if self.use_eye_ball:
             if self.eye_ball_seq is not None and len(self.eye_ball_seq) == frame_num:
@@ -158,14 +172,14 @@ class ConditionHandler:
                 else:
                     eye_idx_list = [_mirror_index(max(i, 0), self.num_eye_ball) for i in range(idx, idx + frame_num)]
                 eye_ball_seq = self.eye_ball_lst[eye_idx_list]
-            more_cond.append(eye_ball_seq)
+            more_cond.append(eye_ball_seq) 
 
         if self.use_sc:
             if len(self.sc_seq) == frame_num:
                 sc_seq = self.sc_seq
             else:
                 sc_seq = np.stack([self.sc] * frame_num, 0)
-            more_cond.append(sc_seq)
+            more_cond.append(sc_seq) 
 
         if len(more_cond) > 1:
             cond_seq = np.concatenate(more_cond, -1)    # [n, dim_cond]

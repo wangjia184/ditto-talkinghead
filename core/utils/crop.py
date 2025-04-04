@@ -9,6 +9,8 @@ import os.path as osp
 from math import sin, cos, acos, degrees
 import cv2
 
+import a2h
+
 DTYPE = np.float32
 CV2_INTERP = cv2.INTER_LINEAR
 
@@ -68,6 +70,7 @@ def parse_pt2_from_pt106(pt106, use_lip=True):
     """
     parsing the 2 points according to the 106 points, which cancels the roll
     """
+    
     pt_left_eye = np.mean(pt106[[33, 35, 40, 39]], axis=0)  # left eye center
     pt_right_eye = np.mean(pt106[[87, 89, 94, 93]], axis=0)  # right eye center
 
@@ -78,6 +81,7 @@ def parse_pt2_from_pt106(pt106, use_lip=True):
         pt2 = np.stack([pt_center_eye, pt_center_lip], axis=0)
     else:
         pt2 = np.stack([pt_left_eye, pt_right_eye], axis=0)
+    print("pt106.shape ", pt106.shape, pt2) # [[617.33887 358.36343]]
     return pt2
 
 
@@ -351,6 +355,8 @@ def crop_image_by_bbox(
 def _estimate_similar_transform_from_pts(
     pts, dsize, scale=1.5, vx_ratio=0, vy_ratio=-0.1, flag_do_rot=True, **kwargs
 ):
+    
+    return a2h.estimate_similar_transform( pts, dsize, scale, vx_ratio, vy_ratio, flag_do_rot, kwargs.get("use_lip", True))
     """calculate the affine matrix of the cropped image from sparse points, the original image to the cropped image, the inverse is the cropped image to the original image
     pts: landmark, 101 or 68 points or other points, Nx2
     scale: the larger scale factor, the smaller face ratio
@@ -397,16 +403,24 @@ def _estimate_similar_transform_from_pts(
     M_INV_H = np.vstack([M_INV, np.array([0, 0, 1])])
     M = np.linalg.inv(M_INV_H)
 
+    # M_INV
+    #  [[ 1.9007473e+00  2.5856155e-01 -1.1543141e+03]
+    #   [-2.5856155e-01  1.9007473e+00 -4.3397235e+02]]
+
+    # M[:2, ...]
+    # [[ 5.16550318e-01 -7.02671270e-02  5.65767319e+02]
+    #  [ 7.02671270e-02  5.16550318e-01  3.05278891e+02]]
     # M_INV is from the original image to the cropped image, M is from the cropped image to the original image
     return M_INV, M[:2, ...]
 
 
 def crop_image(img, pts: np.ndarray, **kwargs):
-    dsize = kwargs.get("dsize", 224)
-    scale = kwargs.get("scale", 1.5)  # 1.5 | 1.6
-    vy_ratio = kwargs.get("vy_ratio", -0.1)  # -0.0625 | -0.1
+    dsize = kwargs.get("dsize", 224) # 224 | 512
+    scale = kwargs.get("scale", 1.5)  # 1.5 | 2.3
+    vy_ratio = kwargs.get("vy_ratio", -0.1)  # -0.1 | -0.125
 
-    pt_crop_flag = kwargs.get("pt_crop_flag", True)
+    pt_crop_flag = kwargs.get("pt_crop_flag", True) # False | False
+    assert pt_crop_flag == False 
 
     M_INV, _ = _estimate_similar_transform_from_pts(
         pts,
@@ -416,21 +430,28 @@ def crop_image(img, pts: np.ndarray, **kwargs):
         flag_do_rot=kwargs.get("flag_do_rot", True),
     )
 
-    img_crop = _transform_img(img, M_INV, dsize)  # origin to crop
-    if pt_crop_flag:
-        pt_crop = _transform_pts(pts, M_INV)
-    else:
-        pt_crop = None
+    print( "flag_do_rot=", kwargs.get("flag_do_rot", True) )
+    
+
+    img_crop = cv2.warpAffine(img, M_INV[:2, :], dsize=(dsize, dsize), flags=cv2.INTER_LINEAR)
+    #img_crop = _transform_img(img, M_INV, dsize)  # origin to crop
+    #if pt_crop_flag:
+    #    pt_crop = _transform_pts(pts, M_INV)
+    #else:
+    #    pt_crop = None
 
     M_o2c = np.vstack([M_INV, np.array([0, 0, 1], dtype=DTYPE)])
     M_c2o = np.linalg.inv(M_o2c)
+    print( "M_o2c=", M_o2c)
+    print( "M_c2o=", M_c2o)
 
     ret_dct = {
         "M_o2c": M_o2c,  # from the original image to the cropped image 3x3
         "M_c2o": M_c2o,  # from the cropped image to the original image 3x3
         "img_crop": img_crop,  # the cropped image
-        "pt_crop": pt_crop,  # the landmarks of the cropped image
+        #"pt_crop": pt_crop,  # the landmarks of the cropped image
     }
+    print( "img_crop=", img_crop.shape, img_crop.dtype)
 
     return ret_dct
 
