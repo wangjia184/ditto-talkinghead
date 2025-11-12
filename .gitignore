@@ -23,7 +23,6 @@ tmp*
 
 *build
 *.egg-info/
-*.mp4
 
 log/*
 *.mp4
@@ -33,6 +32,12 @@ log/*
 *.pth
 *.pyc
 *.jpeg
+*.pkl
 
-!example/audio.wav
-!example/image.png
+example/*
+!example/
+!example/trainset_example/
+!example/trainset_example/fps25_mp4/
+example/trainset_example/fps25_mp4/*
+!example/trainset_example/fps25_mp4/*.mp4
+!example/get_data_info_json_for_trainset_example.py

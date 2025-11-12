@@ -33,6 +33,7 @@ Ant Group
 
 
 ## 📌 Updates
+* [2025.11.12] 🔥🔥 We noticed the community's enthusiasm for open-source training code. [Training code](https://github.com/antgroup/ditto-talkinghead/tree/train) is now available, since there have been multiple versions and limited time to organize, it may differ slightly from the paper version.
 * [2025.07.11] 🔥 The [PyTorch model](#-pytorch-model) is now available.
 * [2025.07.07] 🔥 Ditto is accepted by ACM MM 2025.
 * [2025.01.21] 🔥 We update the [Colab](https://colab.research.google.com/drive/19SUi1TiO32IS-Crmsu9wrkNspWE8tFbs?usp=sharing) demo, welcome to try it. 
@@ -41,145 +42,50 @@ Ant Group
 
  
 
-## 🛠️ Installation
+## 🔍 Overview
+This is the **train branch**, containing code for **training the model**. For inference code, please switch to the [`main`](https://github.com/antgroup/ditto-talkinghead) branch.
 
-Tested Environment  
+<!-- This is the **inference branch**. For training code, please switch to the `train` branch. -->
+
+
+## 🛠️ Environment
+
+Tested Environment
 - System: Centos 7.2  
 - GPU: A100  
 - Python: 3.10  
-- tensorRT: 8.6.1  
 
 
-Clone the codes from [GitHub](https://github.com/antgroup/ditto-talkinghead):  
+Clone the codes from [GitHub](https://github.com/antgroup/ditto-talkinghead) and switch to `train` branch :  
 ```bash
 git clone https://github.com/antgroup/ditto-talkinghead
 cd ditto-talkinghead
+
+git checkout train
 ```
 
-### Conda
 Create `conda` environment:
 ```bash
-conda env create -f environment.yaml
-conda activate ditto
+conda env create -f environment.yaml -n ditto_train
+conda activate ditto_train
 ```
 
-### Pip
-If you have problems creating a conda environment, you can also refer to our [Colab](https://colab.research.google.com/drive/19SUi1TiO32IS-Crmsu9wrkNspWE8tFbs?usp=sharing). 
-After correctly installing `pytorch`, `cuda` and `cudnn`, you only need to install a few packages using pip:
-```bash
-pip install \
-    tensorrt==8.6.1 \
-    librosa \
-    tqdm \
-    filetype \
-    imageio \
-    opencv_python_headless \
-    scikit-image \
-    cython \
-    cuda-python \
-    imageio-ffmpeg \
-    colored \
-    polygraphy \
-    numpy==2.0.1
-```
-
-If you don't use `conda`, you may also need to install `ffmpeg` according to the [official website](https://www.ffmpeg.org/download.html).
+***If you have trouble setting up the environment with Conda, feel free to use your preferred method based on the dependencies listed in [environment.yaml](environment.yaml).***  
 
 
-## 📥 Download Checkpoints
+## 📥 Checkpoints Preparation
 
-Download checkpoints from [HuggingFace](https://huggingface.co/digital-avatar/ditto-talkinghead) and put them in `checkpoints` dir:
+To begin with, acquire the model used for data processing. This requirement is similar to the inference setup in the main branch. Please download the necessary checkpoints from [HuggingFace](https://huggingface.co/digital-avatar/ditto-talkinghead). 
+
 ```bash
 git lfs install
 git clone https://huggingface.co/digital-avatar/ditto-talkinghead checkpoints
 ```
 
-The `checkpoints` should be like:
+For the preprocessing of training data, only the model located in the `ditto_pytorch` directory is required, as illustrated below:
+
 ```text
 ./checkpoints/
-├── ditto_cfg
-│   ├── v0.4_hubert_cfg_trt.pkl
-│   └── v0.4_hubert_cfg_trt_online.pkl
-├── ditto_onnx
-│   ├── appearance_extractor.onnx
-│   ├── blaze_face.onnx
-│   ├── decoder.onnx
-│   ├── face_mesh.onnx
-│   ├── hubert.onnx
-│   ├── insightface_det.onnx
-│   ├── landmark106.onnx
-│   ├── landmark203.onnx
-│   ├── libgrid_sample_3d_plugin.so
-│   ├── lmdm_v0.4_hubert.onnx
-│   ├── motion_extractor.onnx
-│   ├── stitch_network.onnx
-│   └── warp_network.onnx
-└── ditto_trt_Ampere_Plus
-    ├── appearance_extractor_fp16.engine
-    ├── blaze_face_fp16.engine
-    ├── decoder_fp16.engine
-    ├── face_mesh_fp16.engine
-    ├── hubert_fp32.engine
-    ├── insightface_det_fp16.engine
-    ├── landmark106_fp16.engine
-    ├── landmark203_fp16.engine
-    ├── lmdm_v0.4_hubert_fp32.engine
-    ├── motion_extractor_fp32.engine
-    ├── stitch_network_fp16.engine
-    └── warp_network_fp16.engine
-```
-
-- The `ditto_cfg/v0.4_hubert_cfg_trt_online.pkl` is online config
-- The `ditto_cfg/v0.4_hubert_cfg_trt.pkl` is offline config
-
-
-## 🚀 Inference 
-
-Run `inference.py`:
-
-```shell
-python inference.py \
-    --data_root "<path-to-trt-model>" \
-    --cfg_pkl "<path-to-cfg-pkl>" \
-    --audio_path "<path-to-input-audio>" \
-    --source_path "<path-to-input-image>" \
-    --output_path "<path-to-output-mp4>" 
-```
-
-For example:
-
-```shell
-python inference.py \
-    --data_root "./checkpoints/ditto_trt_Ampere_Plus" \
-    --cfg_pkl "./checkpoints/ditto_cfg/v0.4_hubert_cfg_trt.pkl" \
-    --audio_path "./example/audio.wav" \
-    --source_path "./example/image.png" \
-    --output_path "./tmp/result.mp4" 
-```
-
-❗Note:
-
-We have provided the tensorRT model with `hardware-compatibility-level=Ampere_Plus` (`checkpoints/ditto_trt_Ampere_Plus/`). If your GPU does not support it, please execute the `cvt_onnx_to_trt.py` script to convert from the general onnx model (`checkpoints/ditto_onnx/`) to the tensorRT model.
-
-```bash
-python scripts/cvt_onnx_to_trt.py --onnx_dir "./checkpoints/ditto_onnx" --trt_dir "./checkpoints/ditto_trt_custom"
-```
-
-Then run `inference.py` with `--data_root=./checkpoints/ditto_trt_custom`.
-
-
-## ⚡ PyTorch Model
-*Based on community interest and to better support further development, we are now open-sourcing the PyTorch version of the model.*
-
-
-We have added the PyTorch model and corresponding configuration files to the [HuggingFace](https://huggingface.co/digital-avatar/ditto-talkinghead). Please refer to [Download Checkpoints](#-download-checkpoints) to prepare the model files.
-
-The `checkpoints` should be like:
-```text
-./checkpoints/
-├── ditto_cfg
-│   ├── ...
-│   └── v0.4_hubert_cfg_pytorch.pkl
 ├── ...
 └── ditto_pytorch
     ├── aux_models
@@ -191,26 +97,152 @@ The `checkpoints` should be like:
     └── models
         ├── appearance_extractor.pth
         ├── decoder.pth
-        ├── lmdm_v0.4_hubert.pth
         ├── motion_extractor.pth
         ├── stitch_network.pth
-        └── warp_network.pth
+        ├── warp_network.pth
+        └── ...
+
 ```
 
-To run inference, execute the following command:
+
+## ⭕ Quick Start
+
+To quickly get started, we have provided a few example videos under the `example/trainset_example` directory as training data. Before diving into the detailed steps, we will first use these example datasets to walk through the entire data processing and training pipeline.  
+
+**Note: This quick start guide only uses a small amount of data and limited training steps to demonstrate the full workflow. To achieve reasonable generation performance, more high-quality training data and longer training are required.**  
+
 
 ```shell
-python inference.py \
-    --data_root "./checkpoints/ditto_pytorch" \
-    --cfg_pkl "./checkpoints/ditto_cfg/v0.4_hubert_cfg_pytorch.pkl" \
-    --audio_path "./example/audio.wav" \
-    --source_path "./example/image.png" \
-    --output_path "./tmp/result.mp4" 
+DITTO_PATH="<your-ditto-talkinghead-absolute-path>"
+
+
+## Prepare data_info.json
+python example/get_data_info_json_for_trainset_example.py
+# you will get `example/trainset_example/data_info.json`
+
+
+## Process Videos into Training Features
+DATA_INFO_JSON="${DITTO_PATH}/example/trainset_example/data_info.json"
+DATA_LIST_JSON="${DITTO_PATH}/example/trainset_example/data_list.json"
+DATA_PRELOAD_PKL="${DITTO_PATH}/example/trainset_example/data_preload.pkl"
+
+bash prepare_data/prepare_data.sh ${DATA_INFO_JSON} ${DATA_LIST_JSON} ${DATA_PRELOAD_PKL}
+# results in `example/trainset_example/`
+
+
+## MotionDiT Training
+cd MotionDiT
+
+EXP_DIR="${DITTO_PATH}/example/exp_dir"
+EXP_NAME="exp_trainset_example"
+
+accelerate launch train.py \
+    --experiment_dir ${EXP_DIR} \
+    --experiment_name ${EXP_NAME} \
+    --use_sc \
+    --use_last_frame \
+    --use_last_frame_loss \
+    --use_emo \
+    --use_eye_open \
+    --use_eye_ball \
+    --audio_feat_dim 1103 \
+    --motion_feat_dim 265 \
+    --batch_size 100 \
+    --num_workers 8 \
+    --epochs 3 \
+    --save_ckpt_freq 1 \
+    --data_list_json ${DATA_LIST_JSON} \
+    --data_preload \
+    --data_preload_pkl ${DATA_PRELOAD_PKL} \
+
+# training outputs in `example/exp_dir/exp_trainset_example`
 ```
 
 
-## 📧 Acknowledgement
-Our implementation is based on [S2G-MDDiffusion](https://github.com/thuhcsi/S2G-MDDiffusion) and [LivePortrait](https://github.com/KwaiVGI/LivePortrait). Thanks for their remarkable contribution and released code! If we missed any open-source projects or related articles, we would like to complement the acknowledgement of this specific work immediately.
+## 📁 Data Preparation
+
+### Process Training Data
+
+> **Before proceeding, ensure that your video data has been preprocessed. This includes cleaning, filtering, shot detection, and frame rate normalization to 25fps. The final videos should be in MP4 format with synchronized audio and video, and each frame should clearly show the target face.**  
+
+
+**step 1: Prepare `data_info.json`**  
+Based on your video data, manually create a corresponding `data_info.json` file (you can refer to the example: [example/get_data_info_json_for_trainset_example.py](example/get_data_info_json_for_trainset_example.py)).
+The structure of the JSON file is as follows:
+
+```python
+# data_info.json
+
+# Used to specify the mapping between all video files and their corresponding feature storage paths. All paths in this file must be absolute paths.
+
+data_info = {
+    'fps25_video_list': fps25_video_list,           # [*.mp4, ...], your video data
+    'video_list': video_list,                       # [*.mp4, ...], cropped video
+    'wav_list': wav_list,                           # [*.wav, ...], audio
+    'hubert_aud_npy_list': hubert_aud_npy_list,     # [*.npy, ...], audio feat
+    'LP_pkl_list': LP_pkl_list,                     # [*.pkl, ...], LP motion
+    'LP_npy_list': LP_npy_list,                     # [*.npy, ...], LP motion
+    'MP_lmk_npy_list': MP_lmk_npy_list,             # [*.npy, ...], MP lmk
+    'eye_open_npy_list': eye_open_npy_list,         # [*.npy, ...], eye open state
+    'eye_ball_npy_list': eye_ball_npy_list,         # [*.npy, ...], eye ball state
+    'emo_npy_list': emo_npy_list,                   # [*.npy, ...], emo label
+}
+
+```
+
+**Step 2: Process Videos into Training Features**  
+Based on the `data_info.json`, process the raw videos into the feature format required for training.
+
+
+```bash
+DATA_INFO_JSON="<path-to-data-info-json>"       # input:  data_info.json
+DATA_LIST_JSON="<path-to-data-list-json>"       # output: data_list.json    (for train)
+DATA_PRELOAD_PKL="<path-to-data-preload-pkl>"   # output: data_preload.pkl  (for train)
+
+bash prepare_data/prepare_data.sh ${DATA_INFO_JSON} ${DATA_LIST_JSON} ${DATA_PRELOAD_PKL}
+
+```
+
+
+## 🏋️ Model Training
+
+Don't forget to run accelerate config to set up the default configuration for Accelerate, or include the appropriate accelerate arguments in the training command shown below.
+
+```shell
+
+cd MotionDiT
+
+EXP_DIR="<path-to-experiment-dir>"
+EXP_NAME="<experiment-name>"
+
+DATA_LIST_JSON="<path-to-data-list-json>"
+DATA_PRELOAD_PKL="<path-to-data-preload-pkl>"
+
+
+accelerate launch train.py \
+--experiment_dir ${EXP_DIR} \
+--experiment_name ${EXP_NAME} \
+--use_sc \
+--use_last_frame \
+--use_last_frame_loss \
+--use_emo \
+--use_eye_open \
+--use_eye_ball \
+--audio_feat_dim 1103 \
+--motion_feat_dim 265 \
+--batch_size 1024 \
+--num_workers 8 \
+--epochs 500 \
+--save_ckpt_freq 1 \
+--data_list_json ${DATA_LIST_JSON} \
+--data_preload \
+--data_preload_pkl ${DATA_PRELOAD_PKL} \
+
+# You can find the training outputs in `${EXP_DIR}/${EXP_NAME}`.
+
+```
+
+
 
 ## ⚖️ License
 This repository is released under the Apache-2.0 license as found in the [LICENSE](LICENSE) file.
@@ -230,3 +262,5 @@ If you find this codebase useful for your research, please use the following ent
 ## 🌟 Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=antgroup/ditto-talkinghead&type=Date)](https://www.star-history.com/#antgroup/ditto-talkinghead&Date)
+
+
