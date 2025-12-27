@@ -1,11 +1,25 @@
-<script>
-    export const prerender = false;
-    export const ssr = false;
-    import { Math } from "svelte-math";
+<script lang="ts"> 
+ 
+    import { Router, type RouteConfig } from "@mateothegreat/svelte5-router";
+    import TrigFlow from "./TrigFlow.svelte";
 
-    const latex = "\\frac{x}{3}";
+    const routes: RouteConfig[] = [
+        {
+            component: TrigFlow
+        },
+        /*
+        {
+            path: "products",
+            component: Products
+        },
+        {
+            path: "settings",
+            component: Settings
+        }
+        */
+    ];
 </script>
+ 
 
-<Math latex="y" />
-<Math {latex} />
-<Math {latex} displayMode />
+
+<Router {routes} />

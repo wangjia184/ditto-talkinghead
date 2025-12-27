@@ -19,6 +19,7 @@
 		"vite": "^7.2.6"
 	},
 	"dependencies": {
+		"@mateothegreat/svelte5-router": "^2.16.19",
 		"@sveltestrap/sveltestrap": "^7.1.0",
 		"bootstrap": "^5.2.3",
 		"latex.js": "^0.12.6"
