@@ -5,6 +5,7 @@
 
     const routes: RouteConfig[] = [
         {
+            path: "*",
             component: TrigFlow
         },
         /*
