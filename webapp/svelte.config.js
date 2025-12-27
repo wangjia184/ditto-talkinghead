@@ -8,14 +8,15 @@ const config = {
 			assets: '../docs',
 			fallback: 'index.html',
 			precompress: false,
-			strict: true
+			strict: true,
 		}),
 		paths: {
 			base: '/ditto-talkinghead'  
 		},
 		prerender: {
 			entries: []
-		}
+		},
+		appDir: 'assets',
 	}
 };
 
