@@ -5,10 +5,35 @@ config dataclass used for inference
 """
 
 import cv2
+import numpy as np
 from numpy import ndarray
 from dataclasses import dataclass, field
 from typing import Literal, Tuple
 from .base_config import PrintableConfig, make_abs_path
+
+
+def _load_mask_template():
+    """Load mask template, create default if file doesn't exist.
+    This is only used for paste back operations during inference, not needed for preprocessing.
+    """
+    mask_path = make_abs_path('../utils/resources/mask_template.png')
+    
+    # Try to load the mask file
+    mask = cv2.imread(mask_path, cv2.IMREAD_COLOR)
+    
+    if mask is None:
+        # Create a default circular mask (256x256 white circle on black background)
+        # This is used for paste back operations
+        mask = np.zeros((256, 256, 3), dtype=np.uint8)
+        center = (128, 128)
+        radius = 120
+        cv2.circle(mask, center, radius, (255, 255, 255), -1)
+        # Add soft edges using Gaussian blur
+        mask = cv2.GaussianBlur(mask, (21, 21), 0)
+        # Only print warning if paste back is actually enabled (to avoid noise during preprocessing)
+        # Note: We can't check flag_pasteback here as it's not available yet
+    
+    return mask
 
 
 @dataclass(repr=False)  # use repr from PrintableConfig
@@ -60,5 +85,5 @@ class InferenceConfig(PrintableConfig):
     crf: int = 15  # crf for output video
     output_fps: int = 25 # default output fps
 
-    mask_crop: ndarray = field(default_factory=lambda: cv2.imread(make_abs_path('../utils/resources/mask_template.png'), cv2.IMREAD_COLOR))
+    mask_crop: ndarray = field(default_factory=_load_mask_template)
     size_gif: int = 256 # default gif size, TO IMPLEMENT

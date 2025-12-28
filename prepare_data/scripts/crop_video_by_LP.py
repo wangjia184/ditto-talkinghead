@@ -1,4 +1,5 @@
 import os
+import sys
 import numpy as np
 from tqdm.contrib import tzip
 from dataclasses import dataclass
@@ -248,16 +249,28 @@ def crop_pad_scale_video(video, crop_rect, src_h, src_w, dst_h, dst_w, res_video
 def crop_one(video, res_video, cropper=None):
     bbox_pkl = video + '_LP_crop_bbox.pkl'
     if os.path.isfile(bbox_pkl):
+        print(f"  Loading cached bbox from {os.path.basename(bbox_pkl)}", flush=True)
         bbox = load_pkl(bbox_pkl)
     else:
+        print(f"  Computing global bbox...", flush=True)
         bbox = get_global_bbox(cropper, video)
+        print(f"  Global bbox computed: {bbox}", flush=True)
         # dump_pkl(bbox, bbox_pkl)
+    
     crop_rect = cvt_LP_bbox(bbox)
+    print(f"  Crop rect: {crop_rect}", flush=True)
 
     src_w, src_h = get_video_WH(video)
     dst_w, dst_h = 512, 512
+    print(f"  Video size: {src_w}x{src_h} -> {dst_w}x{dst_h}", flush=True)
 
+    print(f"  Cropping and scaling video...", flush=True)
     crop_pad_scale_video(video, crop_rect, src_h, src_w, dst_h, dst_w, res_video)
+    
+    if os.path.isfile(res_video):
+        print(f"  ✓ Video saved: {os.path.basename(res_video)}", flush=True)
+    else:
+        print(f"  ✗ Failed to create video: {res_video}", flush=True)
 
 
 def crop_one_v2(video, res_video, cropper=None):
@@ -267,11 +280,28 @@ def crop_one_v2(video, res_video, cropper=None):
 
 def process_data_list(ori_video_list, res_video_list, ditto_pytorch_path):
     cropper = init_cropper(ditto_pytorch_path)
-    for video, res_video in tzip(ori_video_list, res_video_list):
+    total = len(ori_video_list)
+    success_count = 0
+    fail_count = 0
+    
+    for idx, (video, res_video) in enumerate(tzip(ori_video_list, res_video_list), 1):
         try:
+            print(f"[{idx}/{total}] Processing: {os.path.basename(video)}", flush=True)
             crop_one(video, res_video, cropper)
-        except:
+            if os.path.isfile(res_video):
+                success_count += 1
+            else:
+                print(f"Warning: Output video not created: {res_video}", flush=True)
+                fail_count += 1
+        except Exception as e:
+            print(f"[{idx}/{total}] Failed to process: {os.path.basename(video)}", flush=True)
             traceback.print_exc()
+            fail_count += 1
+    
+    print(f"\nVideo cropping summary: {success_count} succeeded, {fail_count} failed out of {total} total", flush=True)
+    if fail_count > 0:
+        print("Warning: Some videos failed to process. Check the error messages above.", flush=True)
+    sys.stdout.flush()
 
 
 @dataclass

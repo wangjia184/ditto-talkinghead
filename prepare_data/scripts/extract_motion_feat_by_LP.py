@@ -127,17 +127,39 @@ def flip_path(p):
 
 def process_data_list(video_list, pkl_list, npy_list, flip=False, ditto_pytorch_path=''):
     LP = init_LP(ditto_pytorch_path)
-    for video, pkl, npy in tzip(video_list, pkl_list, npy_list):
+    total = len(video_list)
+    success_count = 0
+    skip_count = 0
+    fail_count = 0
+    
+    for idx, (video, pkl, npy) in enumerate(tzip(video_list, pkl_list, npy_list), 1):
         if flip:
             pkl = flip_path(pkl)
             npy = flip_path(npy)
         try:
+            if os.path.isfile(pkl) and os.path.isfile(npy):
+                skip_count += 1
+                continue
+            
+            print(f"[{idx}/{total}] Processing motion features: {os.path.basename(video)}")
             if not os.path.isfile(pkl):
                 video_to_motion_pkl(LP, video, pkl, flip=flip)
             if not os.path.isfile(npy):
                 cvt_live_motion_info(pkl, npy)
-        except:
+            
+            if os.path.isfile(pkl) and os.path.isfile(npy):
+                success_count += 1
+            else:
+                print(f"Warning: Some output files missing for {os.path.basename(video)}")
+                fail_count += 1
+        except Exception as e:
+            print(f"[{idx}/{total}] Failed to process motion features: {os.path.basename(video)}")
             traceback.print_exc()
+            fail_count += 1
+    
+    print(f"\nMotion feature extraction summary: {success_count} succeeded, {skip_count} skipped, {fail_count} failed out of {total} total")
+    if fail_count > 0:
+        print("Warning: Some motion feature extractions failed. Check the error messages above.")
 
 
 @dataclass

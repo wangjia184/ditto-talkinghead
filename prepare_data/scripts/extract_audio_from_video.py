@@ -19,13 +19,31 @@ def extract_audio(path, out_path, sample_rate=16000, ffmpeg_bin='ffmpeg'):
 
 
 def process_data_list(video_list, wav_list, ffmpeg_bin='ffmpeg'):
-    for video, wav in tzip(video_list, wav_list):
+    total = len(video_list)
+    success_count = 0
+    skip_count = 0
+    fail_count = 0
+    
+    for idx, (video, wav) in enumerate(tzip(video_list, wav_list), 1):
         try:
             if os.path.isfile(wav):
+                skip_count += 1
                 continue
+            print(f"[{idx}/{total}] Extracting audio: {os.path.basename(video)}")
             extract_audio(video, wav, ffmpeg_bin=ffmpeg_bin)
-        except:
+            if os.path.isfile(wav):
+                success_count += 1
+            else:
+                print(f"Warning: Audio file not created: {wav}")
+                fail_count += 1
+        except Exception as e:
+            print(f"[{idx}/{total}] Failed to extract audio: {os.path.basename(video)}")
             traceback.print_exc()
+            fail_count += 1
+    
+    print(f"\nAudio extraction summary: {success_count} succeeded, {skip_count} skipped, {fail_count} failed out of {total} total")
+    if fail_count > 0:
+        print("Warning: Some audio extractions failed. Check the error messages above.")
 
 
 @dataclass

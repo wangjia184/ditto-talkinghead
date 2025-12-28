@@ -7,11 +7,12 @@ __pycache__/
 *$py.class
 
 # Model weights
-checkpoints
-**/*.pth
-**/*.onnx
-**/*.pt
-**/*.pth.tar
+#checkpoints
+#**/*.pth
+#**/*.onnx
+#**/*.pt
+#**/*.pth.tar
+example/trainset_example/HDTF/*
 
 .idea
 .vscode
