@@ -624,11 +624,15 @@ From the identity equation, we know that:
 B_{t,r} \cdot (\hat{\alpha}_t x + \hat{\sigma}_t \epsilon - f_{\theta,t,r}) = \text{constant}
 ```
 
-If the model prediction $f_\theta$ is perfect, then $f_\theta = \hat{\alpha}_t x + \hat{\sigma}_t \epsilon$, which means the model should predict the interpolant combination of data and noise.
+If the transition model is exact, the **transport residual**
+```math
+\hat{\alpha}_t x + \hat{\sigma}_t \epsilon - f_{\theta,t,r}
+```
+vanishes, implying the identity equation holds for all $t$.
 
 However, for training, we need a target that can be computed from the current state $(x_t, t)$ and the target time $r$. The key insight is to use the analytical expression for the velocity $v_t$ and the derivative $dF_\theta/dt$ to construct the target.
 
-The target $F_{\text{target}}$ is derived from the identity equation and the transition equation (4). Specifically, we use the fact that:
+Rather than yielding an explicit target, the identity equation defines a **transport constraint**. The training objective is obtained by rewriting this constraint into an equivalent squared residual form. Specifically, we use the fact that:
 
 ```math
 x_r = A_{t,r} x_t + B_{t,r} f_{\theta,t,r}
@@ -640,7 +644,7 @@ and the velocity relationship:
 v_t = \frac{d\alpha_t}{dt} x + \frac{d\sigma_t}{dt} \epsilon
 ```
 
-Different transports induce different **algebraic transport residuals**, whose normalized forms lead to different training losses. The remainder of this subsection fills in the **missing algebra** for the TrigFlow target, mirroring the style of the TrigFlow derivation in `docs/trig-flow.md` but now for the **two-time transition** setting $(t \to r)$.
+Different transports induce different **algebraic transport residuals**, whose normalized forms lead to different training losses. In practice, the loss used in code corresponds to a normalized algebraic residual of the identity equation, which is **algebraically equivalent** to an MSE loss against an implicit target $F_{\text{target}}$. The remainder of this subsection fills in the **missing algebra** for the TrigFlow target, mirroring the style of the TrigFlow derivation in `docs/trig-flow.md` but now for the **two-time transition** setting $(t \to r)$.
 
 ### Detailed derivation of the TrigFlow target
 
