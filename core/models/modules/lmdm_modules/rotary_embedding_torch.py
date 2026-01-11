@@ -40,7 +40,7 @@ def rotate_half(x):
     x = rearrange(x, "... (d r) -> ... d r", r=2)
     x1, x2 = x.unbind(dim=-1)
     x = torch.stack((-x2, x1), dim=-1)
-    return rearrange(x, "... d r -> ... (d r)")
+    return rearrange(x, "... d r -> ... (d r)").contiguous()
 
 
 def apply_rotary_emb(freqs, t, start_index=0):
@@ -56,7 +56,7 @@ def apply_rotary_emb(freqs, t, start_index=0):
         t[..., end_index:],
     )
     t = (t * freqs.cos()) + (rotate_half(t) * freqs.sin())
-    return torch.cat((t_left, t, t_right), dim=-1)
+    return torch.cat((t_left, t, t_right), dim=-1).contiguous()
 
 
 # learned rotation helpers

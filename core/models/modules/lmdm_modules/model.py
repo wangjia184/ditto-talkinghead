@@ -87,15 +87,37 @@ class TransformerEncoderLayer(nn.Module):
         self, x: Tensor, attn_mask: Optional[Tensor], key_padding_mask: Optional[Tensor]
     ) -> Tensor:
         qk = self.rotary.rotate_queries_or_keys(x) if self.use_rotary else x
-        x = self.self_attn(
-            qk,
-            qk,
-            x,
+        # use custom MHA to avoid internal view/stride issues; weights unchanged
+        out = self._mha_custom(qk, qk, x, self.self_attn, attn_mask)
+        return self.dropout1(out)
+
+    @staticmethod
+    def _mha_custom(q: Tensor, k: Tensor, v: Tensor, attn_mod: nn.MultiheadAttention, attn_mask=None) -> Tensor:
+        # Explicit head split using actual seq_len; reuses attn_mod weights
+        B, S, E = q.shape
+        num_heads = attn_mod.num_heads
+        head_dim = E // num_heads
+        w = attn_mod.in_proj_weight
+        b = attn_mod.in_proj_bias
+        qw = w[:E]; kw = w[E:2*E]; vw = w[2*E:]
+        qb = b[:E] if b is not None else None
+        kb = b[E:2*E] if b is not None else None
+        vb = b[2*E:] if b is not None else None
+        q = F.linear(q, qw, qb)
+        k = F.linear(k, kw, kb)
+        v = F.linear(v, vw, vb)
+        def split(t):
+            b_sz, seq_len, _ = t.shape
+            return t.reshape(b_sz, seq_len, num_heads, head_dim).transpose(1, 2).contiguous()
+        q = split(q); k = split(k); v = split(v)
+        attn_out = F.scaled_dot_product_attention(
+            q, k, v,
             attn_mask=attn_mask,
-            key_padding_mask=key_padding_mask,
-            need_weights=False,
-        )[0]
-        return self.dropout1(x)
+            dropout_p=attn_mod.dropout if attn_mod.training else 0.0,
+            is_causal=False,
+        )
+        attn_out = attn_out.transpose(1, 2).reshape(B, S, E).contiguous()
+        return attn_mod.out_proj(attn_out)
 
     # feed forward block
     def _ff_block(self, x: Tensor) -> Tensor:
@@ -191,30 +213,16 @@ class FiLMTransformerDecoderLayer(nn.Module):
     # qkv
     def _sa_block(self, x, attn_mask, key_padding_mask):
         qk = self.rotary.rotate_queries_or_keys(x) if self.use_rotary else x
-        x = self.self_attn(
-            qk,
-            qk,
-            x,
-            attn_mask=attn_mask,
-            key_padding_mask=key_padding_mask,
-            need_weights=False,
-        )[0]
-        return self.dropout1(x)
+        out = TransformerEncoderLayer._mha_custom(qk, qk, x, self.self_attn, attn_mask)
+        return self.dropout1(out)
 
     # multihead attention block
     # qkv
     def _mha_block(self, x, mem, attn_mask, key_padding_mask):
         q = self.rotary.rotate_queries_or_keys(x) if self.use_rotary else x
         k = self.rotary.rotate_queries_or_keys(mem) if self.use_rotary else mem
-        x = self.multihead_attn(
-            q,
-            k,
-            mem,
-            attn_mask=attn_mask,
-            key_padding_mask=key_padding_mask,
-            need_weights=False,
-        )[0]
-        return self.dropout2(x)
+        out = TransformerEncoderLayer._mha_custom(q, k, mem, self.multihead_attn, attn_mask)
+        return self.dropout2(out)
 
     # feed forward block
     def _ff_block(self, x):
