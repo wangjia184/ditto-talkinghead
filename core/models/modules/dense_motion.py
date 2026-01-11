@@ -43,14 +43,29 @@ class DenseMotionNetwork(nn.Module):
         return sparse_motions
 
     def create_deformed_feature(self, feature, sparse_motions):
-        bs, _, d, h, w = feature.shape
-        feature_repeat = feature.unsqueeze(1).unsqueeze(1).repeat(1, self.num_kp+1, 1, 1, 1, 1, 1)      # (bs, num_kp+1, 1, c, d, h, w)
-        feature_repeat = feature_repeat.view(bs * (self.num_kp+1), -1, d, h, w)                         # (bs*(num_kp+1), c, d, h, w)
-        sparse_motions = sparse_motions.view((bs * (self.num_kp+1), d, h, w, -1))                       # (bs*(num_kp+1), d, h, w, 3)
-        sparse_deformed = F.grid_sample(feature_repeat, sparse_motions, align_corners=False)
-        sparse_deformed = sparse_deformed.view((bs, self.num_kp+1, -1, d, h, w))                        # (bs, num_kp+1, c, d, h, w)
+        """
+        feature: [B, C, D, H, W]
+        sparse_motions: [B, K+1, D, H, W, 3]
+        Returns: [B, K+1, C, D, H, W]
+        """
+        B, C, D, H, W = feature.shape
+        K_plus_1 = self.num_kp + 1
 
-        return sparse_deformed
+        # Reshape feature to [B * (K+1), C, D, H, W] by repeating in batch dim
+        # Equivalent to unsqueeze + repeat but avoids high-dim intermediates
+        feature_flat = feature.unsqueeze(1).expand(-1, K_plus_1, -1, -1, -1, -1)  # [B, K+1, C, D, H, W] (6D)
+        feature_flat = feature_flat.reshape(B * K_plus_1, C, D, H, W)             # [B*(K+1), C, D, H, W]
+
+        # Reshape motions to [B*(K+1), D, H, W, 3]
+        motions_flat = sparse_motions.view(B * K_plus_1, D, H, W, 3)
+
+        # Grid sample (5D input supported by custom plugin)
+        deformed_flat = F.grid_sample(feature_flat, motions_flat, align_corners=False)
+
+        # Reshape back to [B, K+1, C, D, H, W]
+        deformed = deformed_flat.view(B, K_plus_1, C, D, H, W)
+
+        return deformed
 
     def create_heatmap_representations(self, feature, kp_driving, kp_source):
         spatial_size = feature.shape[3:]  # (d=16, h=64, w=64)
