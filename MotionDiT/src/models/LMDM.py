@@ -2,7 +2,7 @@
 import torch
 
 from .modules.model import MotionDecoder
-from .modules.diffusion import MotionDiffusion
+from .modules.meanflow import MotionMeanFlow
 
 
 FPS = 25
@@ -36,24 +36,24 @@ class LMDM:
             num_heads=8,
             dropout=0.1,
             cond_feature_dim=audio_feat_dim,
+            aux_head_depth=4,  # v-head depth (default 4, will be clamped to num_layers-1 if needed)
+            eval=False,  # Training mode: include v-head
         )
 
-        diffusion = MotionDiffusion(
+        meanflow = MotionMeanFlow(
             model,
             horizon=seq_frames,
             repr_dim=motion_feat_dim,
-            n_timestep=1000,
-            schedule="cosine",
-            loss_type="l2",
-            clip_denoised=True,
-            predict_epsilon=False,
             guidance_weight=2,
-            use_p2=False,
             cond_drop_prob=0.2,
             part_w_dict=part_w_dict,
             use_last_frame_loss=use_last_frame_loss,
             use_reg_loss=use_reg_loss,
             dim_ws=dim_ws,
+            loss_type="l2",
+            use_jvp=True,
+            disable_flash_attention=True,
+            debug_pva=False,
         )
 
         print(
@@ -65,20 +65,22 @@ class LMDM:
             checkpoint = torch.load(checkpoint, map_location='cpu')
             model.load_state_dict(checkpoint["model_state_dict"])
 
-        diffusion = diffusion.to(device)
+        meanflow = meanflow.to(device)
 
         self.model = model
-        self.diffusion = diffusion
+        self.meanflow = meanflow
 
     def eval(self):
-        self.diffusion.eval()
+        self.meanflow.eval()
+        self.model.eval()
 
     def train(self):
-        self.diffusion.train()
+        self.meanflow.train()
+        self.model.train()
 
     def use_accelerator(self, accelerator):
         self.model = accelerator.prepare(self.model)
-        self.diffusion = self.diffusion.to(accelerator.device)
+        self.meanflow = self.meanflow.to(accelerator.device)
 
     @torch.no_grad()
     def _run_diffusion_render_sample(self, kp_cond, aud_cond, noise=None):
@@ -97,7 +99,7 @@ class LMDM:
         cond_frame = kp_cond.to(device)
         cond = aud_cond.to(device)
 
-        pred_kp_seq = self.diffusion.render_sample(
+        pred_kp_seq = self.meanflow.render_sample(
             shape,
             cond_frame,
             cond,

@@ -6,17 +6,20 @@
 # Training configuration
 EXPERIMENT_NAME="${1:-ditto_s2_baseline}"
 BATCH_SIZE="${2:-32}"
-EPOCHS="${3:-1000}"
+EPOCHS="${3:-100}"
 
 # Data and checkpoint paths
-DATA_ROOT="/hdtf_data"
+DATA_ROOT="/data/HDTF_processed"
 DATA_INFO_JSON="/data/data_info.json"
 DATA_LIST_JSON="/data/data_list_train.json"
 EXPERIMENT_DIR="/data/experiments/s2"
 CHECKPOINT_DIR="/data/checkpoints/ditto_pytorch/models"
 
 # Training hyperparameters
-SAVE_CKPT_FREQ=50
+# Set save_ckpt_freq=1 to save checkpoint every epoch
+# steps_per_epoch: number of steps per epoch (default 1000)
+STEPS_PER_EPOCH=1000
+SAVE_CKPT_FREQ=1
 LR=1e-4
 NUM_WORKERS=4
 
@@ -130,6 +133,7 @@ python MotionDiT/train.py \
     --data_list_json $DATA_LIST_JSON \
     --batch_size $BATCH_SIZE \
     --epochs $EPOCHS \
+    --steps_per_epoch $STEPS_PER_EPOCH \
     --save_ckpt_freq $SAVE_CKPT_FREQ \
     --lr $LR \
     --motion_feat_dim 265 \

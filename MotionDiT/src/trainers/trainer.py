@@ -169,9 +169,16 @@ class Trainer:
             cond_frame = cond_frame.to(self.device)
             cond = cond.to(self.device)
 
-        loss, loss_dict = self.LMDM.diffusion(
+        loss, loss_dict = self.LMDM.meanflow(
             x, cond_frame, cond, t_override=None
         )
+        
+        # Print PVA monitoring values to stdout
+        if self.is_main_process and self.local_step % 100 == 0:
+            monitor_keys = [k for k in loss_dict.keys() if k.startswith('monitor_')]
+            if monitor_keys:
+                monitor_str = " | ".join([f"{k}: {loss_dict[k]:.4f}" for k in sorted(monitor_keys)])
+                print(f"Step {self.global_step} | {monitor_str}")
 
         return loss, loss_dict
 
@@ -182,7 +189,19 @@ class Trainer:
 
         self.LMDM.train()
         self.local_step = 0
-        for data_dict in tqdm(data_loader, disable=not self.is_main_process):
+        
+        # Limit each epoch to configured steps
+        steps_per_epoch = self.opt.steps_per_epoch
+        data_iter = iter(data_loader)
+        
+        for step in tqdm(range(steps_per_epoch), desc=f"Epoch {self.epoch}", disable=not self.is_main_process):
+            try:
+                data_dict = next(data_iter)
+            except StopIteration:
+                # Restart iterator if dataset is exhausted
+                data_iter = iter(data_loader)
+                data_dict = next(data_iter)
+            
             self.global_step += 1
             self.local_step += 1
 

@@ -246,12 +246,18 @@ class MotionDecoder(nn.Module):
         cond_feature_dim: int = 4800,
         activation: Callable[[Tensor], Tensor] = F.gelu,
         use_rotary=True,
+        aux_head_depth: int = 4,
+        eval: bool = False,
         **kwargs
     ) -> None:
 
         super().__init__()
 
         output_feats = nfeats
+        self.is_eval = eval  # Use is_eval to avoid shadowing nn.Module.eval()
+        
+        # Ensure aux_head_depth doesn't exceed num_layers - 1 to have at least 1 shared layer
+        self.aux_head_depth = min(aux_head_depth, num_layers - 1)
 
         # positional embeddings
         self.rotary = None
@@ -264,9 +270,9 @@ class MotionDecoder(nn.Module):
                 latent_dim, dropout, batch_first=True
             )
 
-        # time embedding processing
+        # time embedding processing (for continuous h in [0, 1])
         self.time_mlp = nn.Sequential(
-            SinusoidalPosEmb(latent_dim),  # learned?
+            SinusoidalPosEmb(latent_dim),  # supports float input
             nn.Linear(latent_dim, latent_dim * 4),
             nn.Mish(),
         )
@@ -307,10 +313,16 @@ class MotionDecoder(nn.Module):
             nn.SiLU(),
             nn.Linear(latent_dim, latent_dim),
         )
-        # decoder
-        decoderstack = nn.ModuleList([])
-        for _ in range(num_layers):
-            decoderstack.append(
+        
+        # Split decoder: shared + u_heads + v_heads
+        head_depth = self.aux_head_depth
+        shared_depth = num_layers - head_depth
+        assert shared_depth > 0, f"num_layers ({num_layers}) must be > aux_head_depth ({self.aux_head_depth})"
+        
+        # Shared decoder layers
+        shared_decoder = nn.ModuleList([])
+        for _ in range(shared_depth):
+            shared_decoder.append(
                 FiLMTransformerDecoderLayer(
                     latent_dim,
                     num_heads,
@@ -321,23 +333,85 @@ class MotionDecoder(nn.Module):
                     rotary=self.rotary,
                 )
             )
-
-        self.seqTransDecoder = DecoderLayerStack(decoderstack)
+        self.shared_decoder = DecoderLayerStack(shared_decoder)
         
-        self.final_layer = nn.Linear(latent_dim, output_feats)
+        # u-head branch
+        u_heads = nn.ModuleList([])
+        for _ in range(head_depth):
+            u_heads.append(
+                FiLMTransformerDecoderLayer(
+                    latent_dim,
+                    num_heads,
+                    dim_feedforward=ff_size,
+                    dropout=dropout,
+                    activation=activation,
+                    batch_first=True,
+                    rotary=self.rotary,
+                )
+            )
+        self.u_heads = DecoderLayerStack(u_heads)
+        
+        # v-head branch (only for training)
+        v_heads = nn.ModuleList([])
+        for _ in range(head_depth if not self.is_eval else 0):
+            v_heads.append(
+                FiLMTransformerDecoderLayer(
+                    latent_dim,
+                    num_heads,
+                    dim_feedforward=ff_size,
+                    dropout=dropout,
+                    activation=activation,
+                    batch_first=True,
+                    rotary=self.rotary,
+                )
+            )
+        self.v_heads = DecoderLayerStack(v_heads) if len(v_heads) > 0 else None
+        
+        # Final projection layers
+        self.u_final_layer = nn.Linear(latent_dim, output_feats)
+        self.v_final_layer = nn.Linear(latent_dim, output_feats) if not self.is_eval else None
         
         self.epsilon = 0.00001
 
-    def guided_forward(self, x, cond_frame, cond_embed, times, guidance_weight):
-        unc = self.forward(x, cond_frame, cond_embed, times, cond_drop_prob=1)
-        conditioned = self.forward(x, cond_frame, cond_embed, times, cond_drop_prob=0)
-
-        return unc + (conditioned - unc) * guidance_weight
+    def guided_forward(self, x, cond_frame, cond_embed, h, guidance_weight):
+        """
+        CFG-guided forward pass.
+        h: continuous float in [0, 1] (time difference t - r), shape [B]
+        """
+        unc_u, unc_v = self.forward(x, cond_frame, cond_embed, h, cond_drop_prob=1.0)
+        cond_u, cond_v = self.forward(x, cond_frame, cond_embed, h, cond_drop_prob=0.0)
+        
+        u = unc_u + (cond_u - unc_u) * guidance_weight
+        if unc_v is not None and cond_v is not None:
+            v = unc_v + (cond_v - unc_v) * guidance_weight
+        else:
+            v = None
+        
+        return u, v
 
     def forward(
-        self, x: Tensor, cond_frame: Tensor, cond_embed: Tensor, times: Tensor, cond_drop_prob: float = 0.0
+        self, x: Tensor, cond_frame: Tensor, cond_embed: Tensor, h: Tensor, cond_drop_prob: float = 0.0
     ):
+        """
+        Forward pass with continuous time conditioning.
+        
+        Args:
+            x: Input sequence [B, L, motion_feat_dim]
+            cond_frame: Condition frame [B, motion_feat_dim]
+            cond_embed: Audio condition [B, L, audio_feat_dim]
+            h: Continuous time difference h = t - r, shape [B] or [B, 1], float in [0, 1]
+            cond_drop_prob: Conditional dropout probability
+            
+        Returns:
+            (u, v): Tuple of average velocity u and instantaneous velocity v (if v_head exists)
+                   Both shape [B, L, motion_feat_dim]
+        """
         batch_size, device = x.shape[0], x.device
+        
+        # Ensure h is [B] shape
+        if h.dim() > 1:
+            h = h.squeeze(-1)
+        h = h.to(device)
 
         # concat last frame, project to latent space
         x = torch.cat([x, cond_frame.unsqueeze(1).repeat(1, x.shape[1], 1)], dim=-1)
@@ -361,8 +435,8 @@ class MotionDecoder(nn.Module):
         mean_pooled_cond_tokens = cond_tokens.mean(dim=-2)
         cond_hidden = self.non_attn_cond_projection(mean_pooled_cond_tokens)
 
-        # create the diffusion timestep embedding, add the extra audio projection
-        t_hidden = self.time_mlp(times)
+        # create the time embedding from continuous h (instead of integer timestep)
+        t_hidden = self.time_mlp(h)
 
         # project to attention and FiLM conditioning
         t = self.to_time_cond(t_hidden)
@@ -377,10 +451,17 @@ class MotionDecoder(nn.Module):
         c = torch.cat((cond_tokens, t_tokens), dim=-2)
         cond_tokens = self.norm_cond(c)
 
-        # Pass through the transformer decoder
-        # attending to the conditional embedding
-        output = self.seqTransDecoder(x, cond_tokens, t)
-
-        output = self.final_layer(output)
-
-        return output
+        # Pass through shared decoder
+        shared_output = self.shared_decoder(x, cond_tokens, t)
+        
+        # u-head branch
+        u_output = self.u_heads(shared_output, cond_tokens, t)
+        u = self.u_final_layer(u_output)
+        
+        # v-head branch (only during training)
+        if self.v_heads is not None:
+            v_output = self.v_heads(shared_output, cond_tokens, t)
+            v = self.v_final_layer(v_output)
+            return u, v
+        else:
+            return u, None

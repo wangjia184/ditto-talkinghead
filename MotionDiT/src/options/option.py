@@ -72,6 +72,7 @@ class TrainOptions(PrintableConfig):
     checkpoint: str = ""        # checkpoint for load
 
     save_ckpt_freq: int = 50    # save ckpt freq (epoch)
+    steps_per_epoch: int = 1000    # steps per epoch (default 1000)
 
 
 def check_train_opt(opt: TrainOptions):
