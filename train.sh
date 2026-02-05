@@ -5,7 +5,7 @@
 
 # Training configuration
 EXPERIMENT_NAME="${1:-ditto_s2_baseline}"
-BATCH_SIZE="${2:-32}"
+BATCH_SIZE="${2:-96}"
 EPOCHS="${3:-100}"
 
 # Data and checkpoint paths
