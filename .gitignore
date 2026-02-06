@@ -13,7 +13,8 @@ __pycache__/
 #**/*.pt
 #**/*.pth.tar
 example/trainset_example/HDTF/*
-
+/hallo3_processed/
+/HDTF_processed/
 .idea
 .vscode
 .DS_Store

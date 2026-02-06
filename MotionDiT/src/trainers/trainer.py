@@ -179,6 +179,7 @@ class Trainer:
         data_loader = self.data_loader
 
         DAM = DictAverageMeter()
+        step_DAM = DictAverageMeter()  # For step-based logging
 
         self.LMDM.train()
         self.local_step = 0
@@ -193,24 +194,43 @@ class Trainer:
                 loss_dict['total_loss'] = loss
                 loss_dict_val = {k: float(v) for k, v in loss_dict.items()}
                 DAM.update(loss_dict_val)
+                step_DAM.update(loss_dict_val)
+
+                # Write loss log every 500 steps
+                if self.global_step % 500 == 0:
+                    self._write_loss_log(step_DAM)
+                    step_DAM = DictAverageMeter()  # Reset for next interval
+
+                # Save checkpoint every 2000 steps
+                if self.global_step % 2000 == 0:
+                    self._save_checkpoint()
 
         return DAM
 
-    def _show_and_save(self, DAM: DictAverageMeter):
+    def _write_loss_log(self, DAM: DictAverageMeter):
+        """Write loss log to file"""
         if not self.is_main_process:
             return
         
-        self.LMDM.eval()
-
-        epoch = self.epoch
-
         # show all loss
         avg_loss_msg = "|"
         for k, v in DAM.average().items():
             avg_loss_msg += " %s: %.6f |" % (k, v)
-        msg = f'Epoch: {epoch}, Global_Steps: {self.global_step}, {avg_loss_msg}'
+        msg = f'Epoch: {self.epoch}, Global_Steps: {self.global_step}, {avg_loss_msg}'
         print(msg, file=self.loss_logger)
         self.loss_logger.flush()
+
+    def _save_checkpoint(self):
+        """Save checkpoint based on step"""
+        if not self.is_main_process:
+            return
+        
+        # Save current training state
+        was_training = self.LMDM.model.training
+        
+        # Temporarily set to eval mode for saving (safer for checkpoint)
+        if was_training:
+            self.LMDM.eval()
 
         # save model
         if self.accelerator is not None:
@@ -221,13 +241,16 @@ class Trainer:
         ckpt = {
             "model_state_dict": state_dict,
         }
-        ckpt_p = os.path.join(self.ckpt_path, f"train_{epoch}.pt")
+        ckpt_p = os.path.join(self.ckpt_path, f"train_step_{self.global_step}.pt")
         torch.save(ckpt, ckpt_p)
-        tqdm.write(f"[MODEL SAVED at Epoch {epoch}] ({len(self.ckpt_file_list_for_clear)})")
+        tqdm.write(f"[MODEL SAVED at Step {self.global_step}] ({len(self.ckpt_file_list_for_clear)})")
         
-        # clear model
-        if epoch % self.opt.save_ckpt_freq != 0:
-            self.ckpt_file_list_for_clear.append(ckpt_p)
+        # Restore training state
+        if was_training:
+            self.LMDM.train()
+        
+        # clear old checkpoints (keep only last 5)
+        self.ckpt_file_list_for_clear.append(ckpt_p)
 
         if len(self.ckpt_file_list_for_clear) > 5:
             _ckpt = self.ckpt_file_list_for_clear.pop(0)
@@ -236,6 +259,15 @@ class Trainer:
             except:
                 traceback.print_exc()
                 self.ckpt_file_list_for_clear.insert(0, _ckpt)
+
+    def _show_and_save(self, DAM: DictAverageMeter):
+        """Legacy method for epoch-based logging (kept for compatibility)"""
+        if not self.is_main_process:
+            return
+        
+        # Only write epoch summary if needed (optional, can be removed if not needed)
+        # The step-based logging is now handled in _train_one_epoch
+        pass
 
     def _train_loop(self):
         print(time.asctime(), 'start ...')
